@@ -1,0 +1,34 @@
+{
+  "name": "veblop-fee-split",
+  "version": "1.0.0",
+  "description": "Calculate fee splits across Polygon PoS validators based on stake and performance",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "clean": "rm -rf dist",
+    "test:validate": "node tests/verify-output.js"
+  },
+  "keywords": [
+    "polygon",
+    "validators",
+    "fees",
+    "blockchain"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "ethers": "^6.9.0",
+    "dotenv": "^16.3.1",
+    "commander": "^11.1.0",
+    "axios": "^1.6.0",
+    "p-limit": "^5.0.0",
+    "p-retry": "^6.1.0",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "typescript": "^5.3.0",
+    "tsx": "^4.7.0"
+  }
+}
