@@ -1,188 +1,231 @@
 /**
- * Heimdall service for fetching validator performance scores
+ * Heimdall service for querying validator performance scores
+ * Uses Tendermint ABCI queries to get historical performance data at specific block heights
  */
 
-import axios, { AxiosInstance } from 'axios';
-import { ValidatorPerformance, HeimdallPerformanceResponse } from '../models/types';
+import axios from 'axios';
+import { PerformanceScore } from '../models/types';
 import { logger } from '../utils/logger';
+import { RpcService } from '../utils/rateLimit';
+import { HeimdallBlockMapperService } from './heimdallBlockMapper.service';
+
+interface TendermintAbciQueryResponse {
+  jsonrpc: string;
+  id: number;
+  result: {
+    response: {
+      code: number;
+      value?: string; // Base64 encoded
+      height: string;
+    };
+  };
+}
 
 export class HeimdallService {
-  private client: AxiosInstance;
-  private apiUrl: string;
+  private rpcUrl: string;
+  private rpcService: RpcService;
+  private blockMapper: HeimdallBlockMapperService;
 
-  constructor(apiUrl: string) {
-    this.apiUrl = apiUrl;
-    this.client = axios.create({
-      timeout: 30000, // 30 second timeout
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
+  constructor(rpcUrl: string, rpcService: RpcService, blockMapper: HeimdallBlockMapperService) {
+    this.rpcUrl = rpcUrl;
+    this.rpcService = rpcService;
+    this.blockMapper = blockMapper;
   }
 
   /**
-   * Fetch validator performance scores from Heimdall API
+   * Query interval-based performance scores for validators
+   * Queries Heimdall at each timestamp
+   *
+   * @param stakeUpdateTimestamps - Unique timestamps when stake updates occurred
+   * @param validatorIds - List of validator IDs to query
+   * @returns Map of interval number to (validator ID -> performance delta)
    */
-  async getValidatorPerformance(): Promise<Map<number, ValidatorPerformance>> {
-    logger.info('Fetching validator performance scores from Heimdall API');
+  async queryPerformanceScores(
+    uniqueTimestamps: number[],
+    validatorIds: number[]
+  ): Promise<{
+    performanceScores: PerformanceScore[];
+  }> {
+    logger.info(`Heimdall: Querying performance scores for ${validatorIds.length} validators across ${uniqueTimestamps.length} timestamps`);
 
-    try {
-      const response = await this.client.get<HeimdallPerformanceResponse>(this.apiUrl);
+    const performanceScores: PerformanceScore[] = [];
 
-      if (!response.data || !response.data.validator_performance_score) {
-        throw new Error('Invalid response format from Heimdall API');
-      }
+    for (const timestamp of uniqueTimestamps) {
+      const performanceScore = await this.queryPerformanceScoreByTimestamp(timestamp, validatorIds);
+      performanceScores.push(performanceScore);
+    }
 
-      const performanceMap = this.parsePerformanceData(
-        response.data.validator_performance_score
+    logger.info(`Heimdall: Mapped ${performanceScores.length} timestamps to Heimdall blocks`);
+
+    return { performanceScores };
+  }
+
+  async queryPerformanceScoreByTimestamp(
+    timestamp: number,
+    validatorIds: number[]
+  ): Promise<PerformanceScore> {
+    logger.info(`Heimdall: Querying performance scores for ${validatorIds.length} validators at timestamp ${timestamp}`);
+    // Map Ethereum timestamps to Heimdall blocks
+    const heimdallBlock = await this.blockMapper.findBlockByTimestamp(timestamp);
+    logger.info(`Heimdall: Found Heimdall block ${heimdallBlock.height} for timestamp ${timestamp}`);
+    const scores = await this.queryAllPerformanceScoresAtHeight(
+      validatorIds,
+      heimdallBlock.height
+    );
+    return {
+      ethereumTimestamp: timestamp,
+      heimdallBlock: heimdallBlock.height,
+      performanceScores: scores
+    };
+  }
+
+  /**
+   * Generate storage key for validator performance score
+   * Format: 0x3A (prefix) + validator ID as uint64 big-endian
+   */
+  private generatePerformanceScoreKey(validatorId: number): string {
+    // Create 8-byte buffer for uint64
+    const buffer = Buffer.allocUnsafe(8);
+    // Write as big-endian uint64
+    buffer.writeBigUInt64BE(BigInt(validatorId), 0);
+
+    // Prefix for PerformanceScore (0x3A)
+    const prefix = Buffer.from([0x3A]);
+
+    // Combine prefix + validator_id
+    const fullKey = Buffer.concat([prefix, buffer]);
+
+    return fullKey.toString('hex');
+  }
+
+  /**
+   * Query performance score for a specific validator at a specific Heimdall block height
+   * Uses Tendermint ABCI query to access Bor module state
+   *
+   * @param validatorId - Validator ID
+   * @param height - Heimdall block height (0 for latest)
+   * @returns Raw performance score (uint64) or null if not found
+   */
+  async queryPerformanceScoreAtHeight(
+    validatorId: number,
+    height: number
+  ): Promise<bigint | null> {
+    const keyHex = this.generatePerformanceScoreKey(validatorId);
+
+    const executeQuery = async () => {
+      const response = await axios.post<TendermintAbciQueryResponse>(
+        this.rpcUrl,
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'abci_query',
+          params: {
+            path: '/store/bor/key',
+            data: keyHex,
+            height: height.toString(),
+            prove: false
+          }
+        },
+        {
+          headers: { 'Content-Type': 'application/json' },
+          timeout: 10000
+        }
       );
 
-      logger.info(`Retrieved performance scores for ${performanceMap.size} validators`);
+      return response.data;
+    };
 
-      return performanceMap;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        logger.error('Failed to fetch validator performance from Heimdall API', {
-          status: error.response?.status,
-          statusText: error.response?.statusText,
-          message: error.message,
-        });
+    try {
+      const response = this.rpcService
+        ? await this.rpcService.call(executeQuery)
+        : await executeQuery();
 
-        if (error.response?.status === 404) {
-          throw new Error('Heimdall API endpoint not found. Please check the API URL.');
-        }
-
-        if (error.code === 'ECONNREFUSED' || error.code === 'ETIMEDOUT') {
-          throw new Error(
-            'Unable to connect to Heimdall API. Please check your internet connection and try again.'
-          );
-        }
+      if (!response.result?.response) {
+        logger.warn(`No response data for validator ${validatorId} at height ${height}`);
+        return null;
       }
 
+      const responseData = response.result.response;
+
+      // Check if key exists (code 0 = success)
+      if (responseData.code !== 0) {
+        logger.debug(`Validator ${validatorId} not found at height ${height} (code: ${responseData.code})`);
+        return null;
+      }
+
+      const valueB64 = responseData.value;
+      if (!valueB64) {
+        logger.debug(`No value for validator ${validatorId} at height ${height}`);
+        return null;
+      }
+
+      // Decode base64 and parse as uint64 big-endian
+      const valueBytes = Buffer.from(valueB64, 'base64');
+      if (valueBytes.length !== 8) {
+        throw new Error(
+          `Unexpected value length for validator ${validatorId} at height ${height}: ` +
+          `${valueBytes.length} bytes (expected 8)`
+        );
+      }
+
+      const score = valueBytes.readBigUInt64BE(0);
+      logger.debug(`Validator ${validatorId} at height ${height}: score=${score}`);
+
+      return score;
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        logger.error(`Error querying validator ${validatorId} at height ${height}`, {
+          status: error.response?.status,
+          message: error.message
+        });
+        throw new Error(
+          `Failed to query performance score for validator ${validatorId} at height ${height}: ${error.message}`
+        );
+      }
       throw error;
     }
   }
 
   /**
-   * Parse performance data from API response
-   * Converts string scores to numbers and normalizes to 0-1 range
-   * The best performing validator gets 1.0, all others are relative to that
+   * Query performance scores for all validators at a specific Heimdall block height
+   * Uses rate-limited parallel queries
    *
-   * IMPORTANT: Fails if any validator data is invalid to ensure data integrity
+   * @param validatorIds - Array of validator IDs to query
+   * @param height - Heimdall block height
+   * @returns Map of validator ID to raw performance score (bigint)
    */
-  private parsePerformanceData(
-    data: Record<string, string>
-  ): Map<number, ValidatorPerformance> {
-    if (!data || Object.keys(data).length === 0) {
-      throw new Error('No validator performance data received from Heimdall API');
-    }
+  async queryAllPerformanceScoresAtHeight(
+    validatorIds: number[],
+    height: number
+  ): Promise<Map<number, bigint>> {
+    logger.info(`Querying performance scores for ${validatorIds.length} validators at Heimdall height ${height}`);
 
-    // First pass: parse all raw scores and find the maximum
-    const rawScores: Array<{ validatorId: number; rawScore: number }> = [];
-    let maxScore = 0;
+    const scores = new Map<number, bigint>();
+    let successCount = 0;
+    let notFoundCount = 0;
 
-    for (const [validatorIdStr, rawScoreStr] of Object.entries(data)) {
-      const validatorId = parseInt(validatorIdStr, 10);
-      const rawScore = parseInt(rawScoreStr, 10);
+    // Query all validators in parallel (rate limiting handled by RpcService)
+    const promises = validatorIds.map(async (validatorId) => {
+      const score = await this.queryPerformanceScoreAtHeight(validatorId, height);
 
-      if (isNaN(validatorId)) {
-        throw new Error(
-          `Invalid validator ID from Heimdall API: "${validatorIdStr}". ` +
-          `Expected numeric value. This indicates corrupted API data.`
-        );
+      if (score !== null) {
+        scores.set(validatorId, score);
+        logger.debug(`Score for validator ${validatorId} at height ${height}: ${score}`);
+        successCount++;
+      } else {
+        // Validator doesn't exist at this height, set score to 0
+        scores.set(validatorId, 0n);
+        notFoundCount++;
       }
+    });
 
-      if (isNaN(rawScore)) {
-        throw new Error(
-          `Invalid performance score from Heimdall API for validator ${validatorId}: "${rawScoreStr}". ` +
-          `Expected numeric value. This indicates corrupted API data.`
-        );
-      }
+    await Promise.all(promises);
 
-      if (rawScore < 0) {
-        throw new Error(
-          `Negative performance score for validator ${validatorId}: ${rawScore}. ` +
-          `This indicates invalid data from Heimdall API.`
-        );
-      }
+    logger.info(
+      `Successfully queried ${successCount} validators at height ${height} ` +
+      `(${notFoundCount} not found, set to 0)`
+    );
 
-      rawScores.push({ validatorId, rawScore });
-      if (rawScore > maxScore) {
-        maxScore = rawScore;
-      }
-    }
-
-    if (maxScore === 0) {
-      throw new Error(
-        'All validator performance scores are 0. This indicates a problem with ' +
-        'the Heimdall API or network state. Cannot proceed with fee calculation.'
-      );
-    }
-
-    logger.info(`Maximum validator performance score: ${maxScore}`);
-    logger.info(`Parsed ${rawScores.length} validator performance scores`);
-
-    // Second pass: normalize all scores relative to the maximum
-    const map = new Map<number, ValidatorPerformance>();
-
-    for (const { validatorId, rawScore } of rawScores) {
-      const normalizedScore = rawScore / maxScore;
-
-      map.set(validatorId, {
-        validatorId,
-        rawScore,
-        normalizedScore,
-      });
-
-      logger.debug(
-        `Validator ${validatorId}: raw=${rawScore}, normalized=${normalizedScore.toFixed(6)}`
-      );
-    }
-
-    return map;
-  }
-
-  /**
-   * Get performance score for a specific validator
-   */
-  async getValidatorScore(validatorId: number): Promise<ValidatorPerformance | null> {
-    const allScores = await this.getValidatorPerformance();
-    return allScores.get(validatorId) || null;
-  }
-
-  /**
-   * Get performance statistics
-   */
-  async getPerformanceStats(): Promise<{
-    totalValidators: number;
-    averageScore: number;
-    medianScore: number;
-    minScore: number;
-    maxScore: number;
-  }> {
-    const performanceMap = await this.getValidatorPerformance();
-    const scores = Array.from(performanceMap.values()).map((v) => v.normalizedScore);
-
-    if (scores.length === 0) {
-      return {
-        totalValidators: 0,
-        averageScore: 0,
-        medianScore: 0,
-        minScore: 0,
-        maxScore: 0,
-      };
-    }
-
-    // Sort for median calculation
-    const sortedScores = [...scores].sort((a, b) => a - b);
-    const medianIndex = Math.floor(sortedScores.length / 2);
-
-    return {
-      totalValidators: scores.length,
-      averageScore: scores.reduce((sum, s) => sum + s, 0) / scores.length,
-      medianScore: sortedScores[medianIndex],
-      minScore: Math.min(...scores),
-      maxScore: Math.max(...scores),
-    };
+    return scores;
   }
 }

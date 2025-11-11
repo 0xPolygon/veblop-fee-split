@@ -24,59 +24,47 @@ export class PolygonService {
   }
 
   /**
-   * Get fee balances at each stake update checkpoint
+   * Get fee balances at each timestamp
    */
   async getFeeSnapshots(
     feeContractAddress: string,
-    stakeUpdates: StakeUpdateEvent[],
-    initialBalance: bigint = 0n
+    uniqueTimestamps: number[],
   ): Promise<FeeSnapshot[]> {
-    logger.info(`Getting fee balances for ${stakeUpdates.length} checkpoints`);
-    logger.info(`Initial fee balance: ${ethers.formatEther(initialBalance)} POL`);
+    logger.info(`Getting fee balances for ${uniqueTimestamps.length} timestamps`);
 
     const snapshots: FeeSnapshot[] = [];
-    let previousBalance = initialBalance;
 
-    for (let i = 0; i < stakeUpdates.length; i++) {
-      const update = stakeUpdates[i];
-      logProgress('Processing checkpoints', i + 1, stakeUpdates.length);
+    for (let i = 0; i < uniqueTimestamps.length; i++) {
+      logProgress('Processing timestamps', i + 1, uniqueTimestamps.length);
 
       try {
         // Map Ethereum timestamp to Polygon block
         const polygonBlock = await this.blockMapper.findBlockByTimestamp(
-          update.blockTimestamp
+          uniqueTimestamps[i]
         );
-
+        logger.info(`Found polygon block ${polygonBlock} for Ethereum timestamp ${uniqueTimestamps[i]}`);
         // Get fee balance at that block
         const balance = await this.getBalanceAtBlock(feeContractAddress, polygonBlock);
-
-        // Calculate delta from previous balance
-        const delta = balance - previousBalance;
-
         snapshots.push({
-          ethereumBlock: update.blockNumber,
-          ethereumTimestamp: update.blockTimestamp,
+          ethereumTimestamp: uniqueTimestamps[i],
           polygonBlock,
           feeBalance: balance,
-          feeDelta: delta > 0n ? delta : 0n, // Only count positive deltas (fee increases)
         });
-
-        previousBalance = balance;
+        logger.info(`Fee balance at block ${polygonBlock}: ${ethers.formatEther(balance)} POL`);
+        
       } catch (error) {
         logger.error(
-          `Failed to get fee balance for checkpoint at Ethereum block ${update.blockNumber}`,
+          `Failed to get fee balance at Ethereum timestamp ${uniqueTimestamps[i]}`,
           {
             error: error instanceof Error ? error.message : String(error),
-            ethereumBlock: update.blockNumber,
-            timestamp: update.blockTimestamp,
+            ethereumTimestamp: uniqueTimestamps[i],
           }
         );
         throw error;
       }
     }
 
-    const totalFees = snapshots.reduce((sum, s) => sum + s.feeDelta, 0n);
-    logger.info(`Total fees collected: ${ethers.formatEther(totalFees)} POL`);
+    logger.info(`Total number of fee balance snapshots: ${snapshots.length}`);
 
     return snapshots;
   }

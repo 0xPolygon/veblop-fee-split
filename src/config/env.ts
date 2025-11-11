@@ -4,7 +4,7 @@
 
 import dotenv from 'dotenv';
 import { Config } from '../models/types';
-import { ETHEREUM_STAKING_CONTRACT, POLYGON_FEE_CONTRACT, getHeimdallApiUrl } from './contracts';
+import { ETHEREUM_STAKING_CONTRACT, POLYGON_FEE_CONTRACT } from './contracts';
 
 // Load environment variables
 dotenv.config();
@@ -24,13 +24,14 @@ export function getConfig(): Config {
   const config: Config = {
     ethereumRpcUrl: process.env.ETHEREUM_RPC_URL || '',
     polygonRpcUrl: process.env.POLYGON_RPC_URL || '',
-    heimdallRpcUrl: getHeimdallApiUrl(heimdallRpcUrlEnv),
+    heimdallRpcUrl: heimdallRpcUrlEnv,
     ethereumStakingContract: ETHEREUM_STAKING_CONTRACT,
     polygonFeeContract: POLYGON_FEE_CONTRACT,
     blockProducerCommission: parseFloat(process.env.BLOCK_PRODUCER_COMMISSION || '0.26'),
     outputPath: process.env.OUTPUT_PATH || './output/fee-splits.json',
     maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT_REQUESTS || '3', 10),
     requestDelayMs: parseInt(process.env.REQUEST_DELAY_MS || '200', 10),
+    requestTimeoutMs: process.env.REQUEST_TIMEOUT_MS ? parseInt(process.env.REQUEST_TIMEOUT_MS, 10) : undefined,
     maxRetries: parseInt(process.env.MAX_RETRIES || '3', 10),
   };
 

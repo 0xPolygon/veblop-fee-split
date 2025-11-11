@@ -7,7 +7,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
-    "test:validate": "node tests/verify-output.js"
+    "validate": "node dist/utils/validateOutput.js",
+    "export-csv": "node dist/utils/exportIntervalsCsv.js"
   },
   "keywords": [
     "polygon",

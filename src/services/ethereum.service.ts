@@ -7,6 +7,7 @@ import { StakeUpdateEvent } from '../models/types';
 import { STAKING_CONTRACT_ABI } from '../config/contracts';
 import { RpcService } from '../utils/rateLimit';
 import { logger, logProgress } from '../utils/logger';
+import { binarySearchBlockByTimestampGte, binarySearchBlockByTimestampLte, TimestampedBlock } from '../utils/binarySearch';
 
 export class EthereumService {
   private provider: ethers.JsonRpcProvider;
@@ -24,89 +25,70 @@ export class EthereumService {
   }
 
   /**
-   * Get StakeUpdate events for the specified time period
-   */
-  async getStakeUpdateEvents(daysBack: number): Promise<StakeUpdateEvent[]> {
-    logger.info(`Fetching StakeUpdate events for the last ${daysBack} days`);
-
-    // Get current block
-    const currentBlock = await this.rpcService.call(() => this.provider.getBlockNumber());
-    const currentBlockData = await this.rpcService.call(() =>
-      this.provider.getBlock(currentBlock)
-    );
-
-    if (!currentBlockData) {
-      throw new Error('Failed to fetch current block data');
-    }
-
-    // Calculate target timestamp
-    const targetTimestamp = currentBlockData.timestamp - (daysBack * 24 * 60 * 60);
-    logger.info(`Target timestamp: ${targetTimestamp} (${new Date(targetTimestamp * 1000).toISOString()})`);
-
-    // Find starting block using binary search
-    const fromBlock = await this.findBlockByTimestamp(targetTimestamp);
-    logger.info(`Block range: ${fromBlock} to ${currentBlock} (${currentBlock - fromBlock} blocks)`);
-
-    // Query events in chunks
-    const events = await this.queryEventsInChunks(fromBlock, currentBlock);
-
-    logger.info(`Found ${events.length} StakeUpdate events`);
-    return events;
-  }
-
-  /**
    * Get StakeUpdate events for the specified timestamp range
    */
-  async getStakeUpdateEventsByTimestamp(
-    startTimestamp: number,
-    endTimestamp: number
+  async getStakeUpdateEventsByBlocks(
+    startBlock: number,
+    endBlock: number
   ): Promise<StakeUpdateEvent[]> {
     logger.info(
-      `Fetching StakeUpdate events between timestamps ${startTimestamp} (${new Date(startTimestamp * 1000).toISOString()}) ` +
-      `and ${endTimestamp} (${new Date(endTimestamp * 1000).toISOString()})`
+      `Fetching StakeUpdate events between blocks ${startBlock} and ${endBlock}`
     );
 
-    // Find Ethereum block numbers for the timestamp range
-    const fromBlock = await this.findBlockByTimestamp(startTimestamp);
-    const toBlock = await this.findBlockByTimestamp(endTimestamp);
-
-    logger.info(`Ethereum block range: ${fromBlock} to ${toBlock} (${toBlock - fromBlock} blocks)`);
-
     // Query events in chunks
-    const events = await this.queryEventsInChunks(fromBlock, toBlock);
+    const events = await this.queryEventsInChunks(startBlock, endBlock);
 
     logger.info(`Found ${events.length} StakeUpdate events`);
     return events;
   }
 
   /**
-   * Find block number by timestamp using binary search
+   * Find Ethereum block before a specific timestamp
+   * Returns the largest block with timestamp <= target
+   * Use this when you need to e.g. query contract state that was valid at a specific time
+   * (e.g., validator stakes at the start of a period)
    */
-  async findBlockByTimestamp(targetTimestamp: number): Promise<number> {
-    logger.info('Searching for Ethereum block using binary search...');
+  async findBlockBeforeTimestamp(targetTimestamp: number): Promise<[number, number]> {
+    logger.info(`Ethereum: Searching for latest block with timestamp <= ${targetTimestamp}`);
 
-    let left = 1;
-    let right = await this.rpcService.call(() => this.provider.getBlockNumber());
-    let result = right;
+    const currentHeight = await this.rpcService.call(() => this.provider.getBlockNumber());
 
-    while (left <= right) {
-      const mid = Math.floor((left + right) / 2);
-      const block = await this.rpcService.call(() => this.provider.getBlock(mid));
+    // Create block fetcher that uses our RPC service
+    const fetchBlock = async (blockNumber: number): Promise<TimestampedBlock | null> => {
+      const block = await this.rpcService.call(() => this.provider.getBlock(blockNumber));
+      if (!block) return null;
+      return {
+        number: block.number,
+        timestamp: block.timestamp
+      };
+    };
 
-      if (!block) {
-        right = mid - 1;
-        continue;
-      }
+    // Use shared binary search utility (<= variant)
+    const result = await binarySearchBlockByTimestampLte(
+      targetTimestamp,
+      23513590, //a block from a few days before VEBloP started
+      currentHeight,
+      fetchBlock
+    );
 
-      if (block.timestamp >= targetTimestamp) {
-        result = mid;
-        right = mid - 1;
-      } else {
-        left = mid + 1;
-      }
+    // Validate result
+    const resultBlock = await fetchBlock(result);
+    if (!resultBlock) {
+      throw new Error(`Ethereum: Failed to fetch result block ${result}`);
     }
 
-    return result;
+    if (resultBlock.timestamp > targetTimestamp) {
+      throw new Error(
+        `Ethereum: Binary search failed. Block ${result} has timestamp ${resultBlock.timestamp} > target ${targetTimestamp}`
+      );
+    }
+
+    logger.info(
+      `Ethereum: Found block ${result} with timestamp ${resultBlock.timestamp} ` +
+      `(target was ${targetTimestamp}, diff: ${targetTimestamp - resultBlock.timestamp}s)`
+    );
+
+    return [result, resultBlock.timestamp];
   }
 
   /**
@@ -169,8 +151,8 @@ export class EthereumService {
         );
 
         if (!block) {
-          logger.warn(`Failed to fetch block ${log.blockNumber}, skipping event`);
-          continue;
+          logger.error(`Failed to fetch block ${log.blockNumber}, aborting`);
+          throw new Error(`Failed to fetch block ${log.blockNumber}; cannot process events due to missing timestamp`);
         }
 
         logger.debug(`Adding event for validator ${log.args.validatorId}`);

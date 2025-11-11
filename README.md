@@ -4,24 +4,24 @@ A Node.js application that calculates the distribution of transaction fees acros
 
 ## Overview
 
-This tool calculates fee distributions using an **interval-based allocation approach** that accurately tracks how stakes change over time while applying performance scores uniformly across all intervals:
+This tool calculates fee distributions using an **interval-based allocation approach** that accurately tracks how stakes and performance change over time:
 
-1. Queries `StakeUpdate` events from Ethereum's staking contract to track validator stake changes
-2. Creates time intervals between consecutive stake updates (checkpoints)
-3. Maps Ethereum timestamps to Polygon blocks and queries fee balances at each checkpoint
-4. Fetches validator performance scores from the Heimdall API for the entire period
-5. For each interval:
-   - Allocates fees collected during that interval proportionally to validators based on their stake at the start of the interval
-   - Applies the performance score (from the total period) uniformly across all intervals
-6. Sums allocations across all intervals to calculate total fees per validator
-7. Validates all calculations and generates multiple output formats
+1. Given a start and end Polygon block, queries the corresponding (largest block with an equal or earlier timestamp) from Ethereum.
+2. Queries `StakeUpdate` events from Ethereum's staking contract within this range (excluding the start and end blocks themselves - the start block is excluded because initial stakes are queried directly at that block; the end block is excluded because any stake updates there would only take effect in the next period, which is out of scope).
+3. Creates time intervals between these consecutive stake updates (including the start and end Ethereum timestamps found in 1.)
+4. Maps the Ethereum timestamps at the end of each interval to a Polygon block (smallest block with an equal or later timestamp) and queries Polygon fee balances at each of these.
+5. Maps the Ethereum timestamps at the end of each interval to a Heimdall block (smallest block with an equal or later timestamp) and queries validator performance scores at each of these.
+6. For each interval allocates fees collected during that interval proportionally to validators based on:
+   - their stake at the start of the interval
+   - their performance during the interval
+7. Sums allocations across all intervals to calculate total fees per validator
 
 The calculation uses the PIP-65 formula: `Rv = (Sv × Pv / Σ(Sv × Pv)) × Pool_interval`
 
 Where:
 - `Rv` = Validator reward for an interval
 - `Sv` = Validator's staked amount at the start of the interval
-- `Pv` = Performance score (0-1) from the total period
+- `Pv` = Performance score (number of signed milestones) during the interval
 - `Pool_interval` = Fees collected during interval × (1 - 0.26) [74% after block producer commission]
 
 ## Prerequisites
@@ -29,15 +29,13 @@ Where:
 - Node.js 18+
 - npm or yarn
 - RPC provider accounts with **archive node access** for Polygon (required for historical balance queries)
-  - Recommended: [Alchemy](https://www.alchemy.com/) or [QuickNode](https://www.quicknode.com/)
-  - Archive node access is typically available on paid plans
 
 ## Installation
 
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd fee_split
+cd veblop_fee_split
 ```
 
 2. Install dependencies:
@@ -50,13 +48,7 @@ npm install
 cp .env.example .env
 ```
 
-4. Edit `.env` and update your RPC URLs:
-```bash
-ETHEREUM_RPC_URL=https://eth-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-POLYGON_RPC_URL=https://polygon-mainnet.g.alchemy.com/v2/YOUR_API_KEY
-```
-
-**Important:** Make sure your Polygon RPC provider supports archive node queries. Without archive access, you won't be able to query historical balances.
+**Important:** Make sure your RPC providers support archive node queries. Without archive access, you won't be able to query historical balances.
 
 ## Usage
 
@@ -96,170 +88,175 @@ npm start -- --start-block 77414656 --end-block 77500000 --output ./results/my-a
 
 **Note:** Both `--start-block` and `--end-block` are required. Block 77414656 is the VEBloP fork activation block.
 
-## Output Format
+## Output Files
 
-The tool generates multiple output files for different use cases:
+The tool generates two JSON files in the output directory (default: `./output/`):
 
-### 1. Distribution CSV (`*-distribution.csv`)
+### 1. Detailed Report (`fee-splits-detailed-{startBlock}-{endBlock}-{timestamp}.json`)
 
-Simple 2-column CSV for executing the fee split distribution:
+A comprehensive interval-by-interval breakdown containing:
+- **Metadata**: Block range, timestamps, commission rate, generation time
+- **Summary**: Total fees collected, validator pool, validator count
+- **Intervals**: For each staking interval:
+  - Interval number and timestamps (start/end)
+  - Ethereum block at interval start (used for stake queries)
+  - Polygon and Heimdall blocks at interval end (used for fee and performance queries)
+  - Fees collected and validator pool for the interval
+  - Per-validator data:
+    - Stake amount at interval start (POL)
+    - Performance delta (milestone count)
+    - Fees allocated for this interval (POL)
 
-```csv
-Validator ID,Amount (POL)
-148,64.887792306167560881
-163,57.613414458515842295
-142,50.286766752630103318
-```
-
-**Purpose:** Direct input for fee distribution transactions.
-
-### 2. Detailed Report JSON (`*-detailed-report.json`)
-
-Comprehensive JSON with all calculation details for transparency and visualization:
-
+**Example structure:**
 ```json
 {
   "metadata": {
-    "generatedAt": "2025-11-02T20:46:08.000Z",
-    "polygonBlockRange": {
-      "start": 77414656,
-      "end": 77415299,
-      "startTimestamp": 1759933384,
-      "startTimestampISO": "2025-10-08T14:23:04.000Z",
-      "endTimestamp": 1759934686,
-      "endTimestampISO": "2025-10-08T14:44:46.000Z"
-    },
-    "ethereumBlockRange": {
-      "start": 23533599,
-      "end": 23533707
-    },
-    "feeDistribution": {
-      "totalFeesCollected": "903.57690777519055196",
-      "blockProducerCommissionRate": 0.26,
-      "blockProducerShare": "234.92999602154954351",
-      "validatorPoolShare": "668.64691175364100845"
-    }
+    "startPolygonBlock": 77414656,
+    "endPolygonBlock": 77415299,
+    "startTimestamp": 1234567890,
+    "endTimestamp": 1234568000,
+    "blockProducerCommission": 0.26,
+    "totalIntervals": 5,
+    "generatedAt": "2025-01-15T10:30:00.000Z"
+  },
+  "summary": {
+    "totalFeesCollected": "903.456",
+    "totalValidatorPool": "668.557",
+    "validatorCount": 106
   },
   "intervals": [
     {
       "intervalNumber": 0,
-      "startTimestamp": 1759933384,
-      "endTimestamp": 1759933655,
-      "feeBalance": "179.163419400267768003",
-      "feeDelta": "178.561705475178799830",
-      "validatorStakes": {
-        "1": "35094142818181818181818",
-        "18": "247101408359855922364150",
-        ...
+      "startTimestamp": 1234567890,
+      "endTimestamp": 1234567920,
+      "ethereumBlockAtStart": 12345678,
+      "polygonBlockAtEnd": 77414700,
+      "heimdallBlockAtEnd": 56789,
+      "feesCollected": "180.691",
+      "validatorPoolFees": "133.711",
+      "validators": {
+        "1": {
+          "stakeAtStart": "10000.0",
+          "performanceDelta": "5",
+          "feesAllocated": "1.234",
+        }
       }
-    }
-  ],
-  "performanceScores": [
-    {
-      "validatorId": 148,
-      "rawScore": 1072708,
-      "normalizedScore": 0.978016
-    }
-  ],
-  "allocations": [
-    {
-      "validatorId": 148,
-      "allocation": "64.887792306167560881",
-      "blendedStake": "314846149.344681269851959395",
-      "stakeRatio": 0.09128445,
-      "performanceScore": 0.978016,
-      "performanceWeightedStake": 307924431.763464
     }
   ]
 }
 ```
 
-**Purpose:** Complete audit trail, visualization, and community transparency.
+### 2. Transfer File (`fee-splits-{startBlock}-{endBlock}-{timestamp}.json`)
 
-### 3. Validator Allocations CSV (`*-validator-allocations.csv`)
+A simple file for executing transfers containing:
+- **Metadata**: Block range, total amount, validator count, commission rate
+- **Allocations**: Array of validator ID and amount pairs (sorted by validator ID)
 
-Detailed breakdown for spreadsheet analysis:
+**Example structure:**
+```json
+{
+  "metadata": {
+    "startPolygonBlock": 77414656,
+    "endPolygonBlock": 77415299,
+    "totalAmount": "668.557",
+    "validatorCount": 106,
+    "blockProducerCommission": 0.26,
+    "generatedAt": "2025-01-15T10:30:00.000Z"
+  },
+  "allocations": [
+    {"validatorId": 1, "amount": "6.234"},
+    {"validatorId": 2, "amount": "8.567"}
+  ]
+}
+```
+
+**Note:** All POL amounts are formatted as decimal strings for readability (e.g., "123.456" POL).
+
+## Validating Output Files
+
+A validation script is provided to verify the arithmetic accuracy of the output files:
+
+```bash
+npm run validate <detailed-report.json> [transfer-file.json]
+```
+
+**Examples:**
+
+```bash
+# Validate detailed report only
+npm run validate ./output/fee-splits-detailed-77414656-77415299-2025-01-15.json
+
+# Validate both detailed report and transfer file
+npm run validate ./output/fee-splits-detailed-77414656-77415299-2025-01-15.json ./output/fee-splits-77414656-77415299-2025-01-15.json
+```
+
+The validation script checks:
+- Sum of fees allocated to validators in each interval matches the interval total
+- Sum of fees across all intervals matches the expected total validator pool
+- Commission calculation is correct (validator pool = total fees × (1 - commission))
+- Final allocations in transfer file match the sum across intervals in detailed report
+
+The script uses precise BigInt arithmetic to avoid floating-point rounding errors and allows for minimal rounding differences (≤1 wei per validator) due to division.
+
+## Exporting Intervals to CSV
+
+For spreadsheet analysis, you can export interval data to CSV files:
+
+```bash
+npm run export-csv <detailed-report.json> [output-directory]
+```
+
+**Examples:**
+
+```bash
+# Export to default location (same directory as report)
+npm run export-csv ./output/fee-splits-detailed-77414656-77415299-2025-01-15.json
+
+# Export to custom directory
+npm run export-csv ./output/fee-splits-detailed-77414656-77415299-2025-01-15.json ./csv-exports
+```
+
+This creates a directory `intervals-{startBlock}-{endBlock}/` containing:
+
+### Interval CSV Files
+
+One file per interval: `interval-000-{startTs}-{endTs}.csv`
+
+Each file has:
+- **Header row**: Validator IDs (consistent across all files)
+- **Row 1**: Stake at Start (POL)
+- **Row 2**: Performance Delta (Milestones)
+- **Row 3**: Fees Allocated (POL)
+
+Example:
+```csv
+Metric,8,9,10,12,16,18,19...
+Stake at Start (POL),471158.620,2784166.223,748583.980...
+Performance Delta (Milestones),136,136,136,43,133,136...
+Fees Allocated (POL),0.019,0.114,0.030,0.052,0.062...
+```
+
+### Summary CSV File
+
+`summary-totals.csv` contains cumulative totals for each validator across all intervals:
 
 ```csv
-Validator ID,Allocation (POL),Allocation Ratio (%),Blended Stake (POL),Stake Ratio (%),Performance Score (Normalized),Performance Score (Raw),Performance Weighted Stake
-148,64.887792,9.704343,314846149.34,9.128445,0.978016,1072708,307924431.76
-163,57.613414,8.616418,305093499.29,8.845683,0.896132,982896,273403937.45
+Validator ID,Total Fees Allocated (POL)
+8,0.095430037634430601
+9,0.565732000493765819
+10,0.153331236915766667
 ```
 
-**Purpose:** Detailed analysis in spreadsheet tools (Excel, Google Sheets).
-
-### 4. Intervals CSV (`*-intervals.csv`)
-
-Time intervals with stake distributions and fee deltas:
-
-```csv
-Interval,Start Time,End Time,Start Ethereum Block,End Ethereum Block,Start Polygon Block,End Polygon Block,Fee Balance (POL),Fee Delta (POL)
-0,2025-10-08T14:23:04.000Z,2025-10-08T14:29:15.000Z,23533599,23533621,77414656,77414882,179.163419,178.561705
-1,2025-10-08T14:29:15.000Z,2025-10-08T14:44:46.000Z,23533621,23533707,77414882,77415299,904.178621,725.015203
-```
-
-**Purpose:** Interval-by-interval breakdown showing when stakes changed and fees accrued.
-
-### 5. Performance Scores CSV (`*-performance-scores.csv`)
-
-Validator performance data:
-
-```csv
-Validator ID,Raw Score,Normalized Score
-148,1072708,0.978016
-163,982896,0.896132
-```
-
-**Purpose:** Performance score reference for validation.
-
-### 6. Legacy JSON (`*.json`)
-
-Backward-compatible JSON format with all data combined.
-
-**Purpose:** Compatibility with existing tooling.
-
-## Project Structure
-
-```
-fee_split/
-├── src/
-│   ├── config/           # Configuration and contract definitions
-│   │   ├── contracts.ts  # Contract addresses and ABIs
-│   │   └── env.ts        # Environment variable validation
-│   ├── services/         # Blockchain and API services
-│   │   ├── ethereum.service.ts    # Query Ethereum staking events
-│   │   ├── polygon.service.ts     # Query Polygon fee balances
-│   │   ├── heimdall.service.ts    # Fetch validator performance
-│   │   └── blockMapper.service.ts # Map timestamps to blocks
-│   ├── models/
-│   │   └── types.ts      # TypeScript type definitions
-│   ├── calculators/
-│   │   └── feeSplit.calculator.ts # PIP-65 interval-based fee split logic
-│   ├── utils/
-│   │   ├── logger.ts     # Winston logging
-│   │   ├── rateLimit.ts  # Rate limiting and retry logic
-│   │   ├── validation.ts # Output validation utilities
-│   │   └── csvWriter.ts  # CSV file generation
-│   └── index.ts          # Main CLI entry point
-├── tests/
-│   └── verify-output.js  # Standalone validation script
-├── output/               # Generated output files
-├── logs/                 # Application logs
-├── .env                  # Your configuration (not committed)
-├── .env.example          # Example configuration
-├── package.json
-├── tsconfig.json
-└── README.md
-```
+**Note:** All validator IDs are consistent across all interval CSV files, with missing validators shown as `0` for that interval.
 
 ## How It Works
 
-### Overview: Interval-Based Allocation with Fixed Performance Scores
+### Overview: Interval-Based Allocation
 
-The calculator uses an **interval-based approach** that accurately accounts for stake changes over time while applying a uniform performance score across all intervals. This ensures fair fee distribution that reflects:
+The calculator uses an **interval-based approach** that accurately accounts for stake and performance changes over time. This ensures fair fee distribution that reflects:
 1. **Dynamic stake distribution**: Stakes change as validators join, leave, or adjust their stake
 2. **Time-weighted allocations**: Validators receive fees proportional to how long they staked
-3. **Performance accountability**: A single performance score from the total period is applied uniformly
+3. **Performance accountability**: Performance scores directly impact fee allocations
 
 ### Detailed Calculation Steps
 
@@ -280,6 +277,7 @@ The timestamps of StakeUpdate events define a series of consecutive intervals:
 - **Interval 1**: First StakeUpdate → Second StakeUpdate
 - **Interval 2**: Second StakeUpdate → Third StakeUpdate
 - ... and so on
+- **Interval <last>**: Last StakeUpdate → Period end
 
 Within each interval, the stake distribution is **constant** (no validators changed their stake).
 
@@ -287,25 +285,21 @@ When multiple validators update their stake in the same Ethereum block, they are
 
 #### 3. Map Timestamps to Polygon Blocks and Query Fee Balances
 
-For each interval boundary (StakeUpdate timestamp):
-1. Map the Ethereum timestamp to a Polygon block number using binary search
+For each interval ending boundary:
+1. Map the Ethereum timestamp to a Polygon block number (smallest block with a greater than or equal timestamp) using binary search
 2. Query the fee collection contract balance at that Polygon block (requires archive node)
-3. Calculate the **feeDelta** for the interval: `balance_end - balance_start`
+3. The delta between this balance, and the previous balance is the fee delta accrued during the interval.
+
+NB - for the final boundary corresponding to the end of the period, we use the fee balance at the exact end Polygon block supplied.
 
 This gives us the exact fees collected during each interval.
 
-**Important**: When multiple StakeUpdates occur in the same Ethereum block, only the **first fee snapshot** is used (others would have `feeDelta=0` due to balance already being captured).
-
 #### 4. Fetch Validator Performance Scores
 
-The Heimdall API provides performance scores for each validator based on their voting participation and correctness over the entire period:
-- Raw scores range from 0 to ~1,000,000
-- Scores are normalized to 0-1: `normalized = raw_score / max_score`
-
-**Critical**: These performance scores represent the **entire analysis period** and are applied **uniformly across all intervals**. This means:
-- A validator's performance score doesn't change between intervals
-- Performance is measured over the total period, not per-interval
-- The same performance score is used when calculating allocations for every interval
+For each interval ending boundary:
+1. Map the Ethereum timestamp to a Heimdall block number (smallest block with a greater than or equal timestamp) using binary search
+2. Query Heimdall for validator performance scores at that Heimdall block
+3. The delta between these scores, and the scores calculated at the previous boundary are the scores used for this interval.
 
 #### 5. Calculate Interval-Based Fee Allocations
 
@@ -334,64 +328,8 @@ TotalFees_v = Σ(Allocation_v,i) for all intervals i
 This ensures that:
 - Validators receive fees **only for intervals when they had stake**
 - Fees are allocated **proportional to stake amount** at each interval
-- Performance scores **from the total period** weight all allocations
+- Performance scores **for the specific interval** weight fees at each interval
 - **Time-weighted**: A validator with stake for longer receives more fees
-
-#### 6. Calculate Blended Stakes (for reporting)
-
-To provide a single "average stake" value for each validator, a **blended stake** is calculated:
-
-```
-BlendedStake_v = Σ(Stake_v,i × Pool_i) / Σ(Pool_i)
-```
-
-Where:
-- `Stake_v,i` = Validator v's stake in interval i
-- `Pool_i` = Validator pool size in interval i
-- The sum is across all intervals
-
-This is a **weighted average** where intervals with higher fee collection have more influence, reflecting their importance to the total allocation.
-
-#### 7. Validate Results
-
-The tool automatically validates:
-- Sum of fee deltas equals total fees collected
-- Balance changes match fee deltas
-- Sum of validator allocations equals validator pool (74% of total fees)
-- Commission calculations are correct (26% block producer share)
-
-All validations must pass with less than 0.001 POL tolerance.
-
-### Why This Approach?
-
-**Accuracy**: By processing each interval separately with the correct stake distribution, the calculation perfectly accounts for stake changes over time.
-
-**Fairness**: Validators receive fees proportional to their stake during each interval, weighted by their overall performance.
-
-**Transparency**: Every interval is tracked with complete data on stakes, fees, and allocations.
-
-**Simplicity**: Performance scores are measured once for the entire period, avoiding complex per-interval performance tracking.
-
-### Example Scenario
-
-Consider 3 validators over 2 intervals:
-
-**Interval 1** (100 POL collected):
-- Validator A: 1000 POL staked, 0.95 performance → receives ~31.67 POL
-- Validator B: 1000 POL staked, 0.95 performance → receives ~31.67 POL
-- Validator C: 500 POL staked, 0.90 performance → receives ~15.00 POL
-
-**Interval 2** (100 POL collected, Validator A increased stake):
-- Validator A: 2000 POL staked, 0.95 performance → receives ~46.51 POL
-- Validator B: 1000 POL staked, 0.95 performance → receives ~23.26 POL
-- Validator C: 500 POL staked, 0.90 performance → receives ~11.05 POL
-
-**Total Allocations**:
-- Validator A: 31.67 + 46.51 = 78.18 POL
-- Validator B: 31.67 + 23.26 = 54.93 POL
-- Validator C: 15.00 + 11.05 = 26.05 POL
-
-Notice how Validator A receives more total fees because they had higher stake in Interval 2, even though they had the same stake as Validator B in Interval 1.
 
 ## Technical Details
 
@@ -400,6 +338,7 @@ Notice how Validator A receives more total fees because they had higher stake in
 The tool implements rate limiting to respect RPC provider limits:
 - Configurable concurrent requests (default: 3)
 - Configurable delay between requests (default: 200ms)
+- Configurable timeouts (default: none)
 - Automatic retry with exponential backoff
 
 ### Error Handling
@@ -414,82 +353,6 @@ The tool implements rate limiting to respect RPC provider limits:
 - Caching of timestamp-to-block mappings
 - Batched RPC queries where possible
 - Efficient event querying in 5000-block chunks
-
-## Troubleshooting
-
-### "Archive node required" Error
-
-**Problem:** Your RPC provider doesn't support historical state queries.
-
-**Solution:** Use a provider with archive node access:
-- Alchemy (Growth plan or higher)
-- QuickNode (with archive add-on)
-- Your own archive node
-
-### Rate Limit Errors
-
-**Problem:** Too many requests to RPC provider.
-
-**Solution:** Adjust rate limiting in `.env`:
-```bash
-MAX_CONCURRENT_REQUESTS=2
-REQUEST_DELAY_MS=500
-```
-
-### "No StakeUpdate events found"
-
-**Problem:** No stake changes in the specified block range.
-
-**Solution:** Try a larger block range:
-```bash
-npm start -- --start-block 77414656 --end-block 78000000
-```
-
-### Connection Timeouts
-
-**Problem:** Network issues or slow RPC provider.
-
-**Solution:** The tool will automatically retry. If issues persist:
-1. Check your internet connection
-2. Try a different RPC provider
-3. Increase `MAX_RETRIES` in `.env`
-
-## Output Validation
-
-The tool includes comprehensive validation that runs automatically after each calculation:
-
-### Automatic Validation
-
-After generating output files, the tool validates:
-1. **Fee Delta Sum**: Sum of fee deltas across all intervals matches total fees collected
-2. **Balance Changes**: Changes in contract balance match fee deltas
-3. **Allocation Sum**: Sum of validator allocations equals validator pool (74% of total)
-4. **Commission Calculation**: Block producer commission (26%) is calculated correctly
-
-All checks must pass with < 0.001 POL tolerance.
-
-### Manual Validation
-
-You can also validate output files manually:
-
-```bash
-npm run test:validate output/fee-splits_2025-11-02_20-46-08.json
-```
-
-This is useful for:
-- CI/CD pipelines
-- Independent verification of results
-- Testing new calculation approaches
-
-### Validation Output
-
-```
-✓ All validation checks passed
-  - Fee deltas sum correctly
-  - Balance changes match fee deltas
-  - Validator allocations sum correctly
-  - Commission calculated correctly
-```
 
 ## Development
 
@@ -510,14 +373,6 @@ Remove compiled files:
 npm run clean
 ```
 
-### Test Validation
-
-Test the validation logic on existing output:
-
-```bash
-npm run test:validate output/fee-splits_TIMESTAMP.json
-```
-
 ## Configuration Reference
 
 Configuration is done via environment variables in `.env`. Contract addresses are hardcoded as canonical constants.
@@ -534,6 +389,7 @@ Configuration is done via environment variables in `.env`. Contract addresses ar
 | `MAX_CONCURRENT_REQUESTS` | Max concurrent RPC calls | `3` |
 | `REQUEST_DELAY_MS` | Delay between requests | `200` |
 | `MAX_RETRIES` | Max retry attempts | `3` |
+| `REQUEST_TIMEOUT_MS` | RPC Time Out | none |
 | `LOG_LEVEL` | Logging level | `info` |
 
 ### Hardcoded Contract Addresses
@@ -557,5 +413,3 @@ Contributions are welcome! Please open an issue or submit a pull request.
 
 - [PIP-65 Economic Model](https://forum.polygon.technology/t/pip-65-economic-model-for-veblop-architecture/20933)
 - [Polygon Documentation](https://docs.polygon.technology/)
-- [Heimdall API](https://heimdall-api.polygon.technology/)
-- [ethers.js Documentation](https://docs.ethers.org/v6/)

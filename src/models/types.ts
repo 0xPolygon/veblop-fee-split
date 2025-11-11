@@ -14,115 +14,30 @@ export interface StakeUpdateEvent {
 }
 
 /**
+ * Heimdall block information
+ */
+export interface HeimdallBlockInfo {
+  height: number;
+  timestamp: number;
+  timestampISO: string;
+}
+
+/**
  * Fee balance snapshot at a specific point in time
  */
 export interface FeeSnapshot {
-  ethereumBlock: number;
   ethereumTimestamp: number;
   polygonBlock: number;
   feeBalance: bigint;
-  feeDelta: bigint; // Change since last snapshot
 }
 
 /**
- * Validator performance data from Heimdall API
+ * Performance score snapshot at a specific point in time
  */
-export interface ValidatorPerformance {
-  validatorId: number;
-  rawScore: number; // Raw score from API (0-1000000)
-  normalizedScore: number; // Normalized to 0-1
-}
-
-/**
- * Validator stake information at a checkpoint
- */
-export interface ValidatorStake {
-  validatorId: number;
-  stakedAmount: bigint;
-}
-
-/**
- * Heimdall API response structure
- */
-export interface HeimdallPerformanceResponse {
-  validator_performance_score: {
-    [validatorId: string]: string; // Score as string
-  };
-}
-
-/**
- * Fee split calculation result for a single validator
- */
-export interface FeeSplitResult {
-  validatorId: number;
-  stakedAmount: bigint; // Time-weighted blended stake across all intervals
-  stakedAmountFormatted: string;
-  stakeRatio: number; // Ratio of blended stake to total blended stake
-  performanceScore: number;
-  performanceWeightedStake: number; // Blended stake × performance score
-  feeAllocation: bigint;
-  feeAllocationFormatted: string;
-}
-
-/**
- * Staking interval data for CSV export
- */
-export interface StakingInterval {
-  intervalNumber: number;
-  startTimestamp: number;
-  startTimestampISO: string;
-  startEthereumBlock: number;
-  startPolygonBlock: number;
-  endTimestamp?: number;
-  endTimestampISO?: string;
-  endEthereumBlock?: number;
-  endPolygonBlock?: number;
-  feeBalance: bigint;
-  feeDelta: bigint;
-  validatorStakes: Map<number, bigint>; // validatorId -> stake amount
-}
-
-/**
- * Complete output data structure
- */
-export interface OutputData {
-  metadata: {
-    generatedAt: string;
-    polygonBlockRange: {
-      from: number;
-      to: number;
-    };
-    ethereumBlockRange: {
-      from: number;
-      to: number;
-    };
-    totalFeesCollected: string;
-    validatorPoolSize: string; // After 26% producer commission
-    blockProducerCommission: number;
-  };
-  stakeUpdates: Array<{
-    validatorId: number;
-    totalStaked: string;
-    ethereumBlock: number;
-    ethereumTimestamp: number;
-    ethereumTimestampISO: string;
-    polygonBlock: number;
-    feeBalance: string;
-    feeDelta: string;
-  }>;
-  validatorPerformance: Array<{
-    validatorId: number;
-    rawScore: number;
-    normalizedScore: number;
-  }>;
-  feeSplits: Array<{
-    validatorId: number;
-    stakedAmount: string; // Formatted as POL
-    stakeRatio: number;
-    performanceScore: number;
-    performanceWeightedStake: number;
-    feeAllocation: string; // Formatted as POL
-  }>;
+export interface PerformanceScore {
+  ethereumTimestamp: number;
+  heimdallBlock: number;
+  performanceScores: Map<number, bigint>; // validatorId -> performance score
 }
 
 /**
@@ -138,6 +53,7 @@ export interface Config {
   outputPath: string;
   maxConcurrentRequests: number;
   requestDelayMs: number;
+  requestTimeoutMs?: number; // Optional timeout for network calls in milliseconds
   maxRetries: number;
 }
 
@@ -147,6 +63,7 @@ export interface Config {
 export interface RateLimiterOptions {
   maxConcurrent: number;
   minDelayMs: number;
+  timeoutMs?: number; // Optional timeout for network calls in milliseconds
 }
 
 /**
@@ -156,4 +73,82 @@ export interface RetryOptions {
   maxRetries: number;
   baseDelayMs: number;
   maxDelayMs: number;
+}
+
+/**
+ * Per-validator data for a single interval
+ */
+export interface ValidatorIntervalData {
+  stakeAtStart: string; // POL amount as decimal string
+  performanceDelta: string; // Raw milestone count as string
+  feesAllocated: string; // POL amount as decimal string
+}
+
+/**
+ * Complete data for a single interval
+ */
+export interface IntervalData {
+  intervalNumber: number;
+  startTimestamp: number;
+  endTimestamp: number;
+  startTimestampISO: string;
+  endTimestampISO: string;
+  ethereumBlockAtStart: number;
+  polygonBlockAtEnd: number;
+  heimdallBlockAtEnd: number;
+  feesCollected: string; // POL amount as decimal string
+  validatorPoolFees: string; // POL amount as decimal string (after commission)
+  validators: Record<number, ValidatorIntervalData>; // validatorId -> data
+}
+
+/**
+ * Summary metadata for the entire calculation
+ */
+export interface CalculationMetadata {
+  startPolygonBlock: number;
+  endPolygonBlock: number;
+  startTimestamp: number;
+  endTimestamp: number;
+  startTimestampISO: string;
+  endTimestampISO: string;
+  blockProducerCommission: number;
+  totalIntervals: number;
+  generatedAt: string;
+}
+
+/**
+ * Summary statistics for the calculation
+ */
+export interface CalculationSummary {
+  totalFeesCollected: string; // POL amount as decimal string
+  totalValidatorPool: string; // POL amount as decimal string (after commission)
+  validatorCount: number;
+}
+
+/**
+ * Complete calculation result with interval details
+ */
+export interface CalculationResult {
+  finalAllocations: Map<number, bigint>; // validatorId -> total allocated fees (bigint for precision)
+  intervals: IntervalData[];
+  metadata: CalculationMetadata;
+  summary: CalculationSummary;
+}
+
+/**
+ * Transfer file structure (for executing actual transfers)
+ */
+export interface TransferData {
+  metadata: {
+    startPolygonBlock: number;
+    endPolygonBlock: number;
+    totalAmount: string; // POL amount as decimal string
+    validatorCount: number;
+    blockProducerCommission: number;
+    generatedAt: string;
+  };
+  allocations: Array<{
+    validatorId: number;
+    amount: string; // POL amount as decimal string
+  }>;
 }

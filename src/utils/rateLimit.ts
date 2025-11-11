@@ -8,6 +8,38 @@ import { RateLimiterOptions, RetryOptions } from '../models/types';
 import { logger } from './logger';
 
 /**
+ * Timeout error class for network call timeouts
+ */
+export class TimeoutError extends Error {
+  constructor(message: string, public readonly timeoutMs: number) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+/**
+ * Execute a function with a timeout
+ */
+async function withTimeout<T>(
+  fn: () => Promise<T>,
+  timeoutMs: number
+): Promise<T> {
+  return Promise.race([
+    fn(),
+    new Promise<T>((_, reject) => {
+      setTimeout(() => {
+        reject(
+          new TimeoutError(
+            `Operation timed out after ${timeoutMs}ms`,
+            timeoutMs
+          )
+        );
+      }, timeoutMs);
+    }),
+  ]);
+}
+
+/**
  * Rate limiter class to control concurrent requests and delay between calls
  */
 export class RateLimiter {
@@ -19,7 +51,7 @@ export class RateLimiter {
   }
 
   /**
-   * Execute a function with rate limiting
+   * Execute a function with rate limiting and optional timeout
    */
   async execute<T>(fn: () => Promise<T>): Promise<T> {
     return this.limit(async () => {
@@ -33,6 +65,12 @@ export class RateLimiter {
       }
 
       this.lastRequestTime = Date.now();
+      
+      // Apply timeout if configured
+      if (this.options.timeoutMs && this.options.timeoutMs > 0) {
+        return withTimeout(fn, this.options.timeoutMs);
+      }
+      
       return fn();
     });
   }
@@ -100,13 +138,15 @@ export class RetryHandler {
 
     const message = error.message.toLowerCase();
 
-    // Retry on network errors
+    // Retry on network errors and timeout errors
     if (
       message.includes('timeout') ||
       message.includes('network') ||
       message.includes('econnrefused') ||
+      message.includes('econnreset') ||
       message.includes('enotfound') ||
-      message.includes('rate limit')
+      message.includes('rate limit') ||
+      error instanceof TimeoutError
     ) {
       return true;
     }

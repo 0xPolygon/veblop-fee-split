@@ -6,7 +6,7 @@
  * Where:
  * - Rv = Validator reward
  * - Sv = Validator's staked amount
- * - Pv = Performance score (0-1)
+ * - Pv = Performance score delta (raw milestone count for the interval)
  * - Pool_validators = Total fees × (1 - block_producer_commission)
  */
 
@@ -14,10 +14,12 @@ import { ethers } from 'ethers';
 import {
   StakeUpdateEvent,
   FeeSnapshot,
-  ValidatorPerformance,
-  FeeSplitResult,
-  ValidatorStake,
-  StakingInterval
+  PerformanceScore,
+  CalculationResult,
+  IntervalData,
+  ValidatorIntervalData,
+  CalculationMetadata,
+  CalculationSummary
 } from '../models/types';
 import { logger } from '../utils/logger';
 
@@ -30,33 +32,40 @@ export class FeeSplitCalculator {
    * For each interval between consecutive stake updates:
    * - Determine the stake distribution at the start of that interval
    * - Allocate the fees collected during that interval proportionally
+   * - Use interval-specific performance deltas (milestones signed during that interval)
    * - Sum allocations across all intervals
    *
+   * @param uniqueTimestamps - Unique timestamps of each staking update, followed by the final end block timestamp
    * @param initialStakes - Initial stake amounts for all validators at period start
-   * @param stakeUpdates - Stake update events defining interval boundaries (applied as deltas)
-   * @param feeSnapshots - Fee snapshots at each checkpoint with deltas
-   * @param performanceScores - Performance scores from Heimdall (applied uniformly)
-   * @param totalFees - Total fees collected (in wei)
-   * @returns Array of fee split results for each validator
+   * @param stakeUpdates - Stake update events defining interval boundaries
+   * @param initialFeeBalance - Initial fee balance at the start of the period
+   * @param feeSnapshots - Fee snapshots at each timestamp
+   * @param initialPerformanceScore - Performance score snapshot at the start of the period
+   * @param performanceScores - Performance score snapshots for each timestamp
+   * @param startPolygonBlock - Starting Polygon block number
+   * @param endPolygonBlock - Ending Polygon block number
+   * @param startTimestamp - Starting timestamp
+   * @param endTimestamp - Ending timestamp
+   * @param initialEthereumBlock - Initial Ethereum block used for stake queries
+   * @returns Complete calculation result with interval details
    */
   calculate(
+    uniqueTimestamps: number[],
     initialStakes: Map<number, bigint>,
     stakeUpdates: StakeUpdateEvent[],
+    initialFeeBalance: bigint,
     feeSnapshots: FeeSnapshot[],
-    performanceScores: Map<number, ValidatorPerformance>,
-    totalFees: bigint
-  ): { feeSplits: FeeSplitResult[]; intervals: StakingInterval[] } {
+    initialPerformanceScore: PerformanceScore,
+    performanceScores: PerformanceScore[],
+    startPolygonBlock: number,
+    endPolygonBlock: number,
+    startTimestamp: number,
+    endTimestamp: number,
+    initialEthereumBlock: number,
+  ): CalculationResult {
     // Validate inputs
     if (initialStakes.size === 0) {
       throw new Error('No initial stakes provided. Cannot calculate fee splits.');
-    }
-
-    if (performanceScores.size === 0) {
-      throw new Error('No performance scores provided. Cannot calculate fee splits.');
-    }
-
-    if (totalFees < 0n) {
-      throw new Error(`Total fees cannot be negative: ${totalFees}`);
     }
 
     if (this.blockProducerCommission < 0 || this.blockProducerCommission >= 1) {
@@ -68,35 +77,52 @@ export class FeeSplitCalculator {
 
     logger.info('Calculating fee splits using PIP-65 formula with interval-based allocation');
     logger.info(`Starting with ${initialStakes.size} validators`);
-    logger.info(`Total fees collected: ${ethers.formatEther(totalFees)} POL`);
     logger.info(`Block producer commission: ${(this.blockProducerCommission * 100).toFixed(1)}%`);
 
-    // Calculate validator pool (after block producer commission)
-    const validatorPool = this.calculateValidatorPool(totalFees);
-    logger.info(`Validator pool: ${ethers.formatEther(validatorPool)} POL`);
-
     // Process intervals and accumulate fee allocations
-    const { validatorAllocations, intervals } = this.calculateIntervalBasedAllocations(
-      initialStakes,
-      stakeUpdates,
-      feeSnapshots,
-      performanceScores
-    );
+    const { validatorAllocations, intervals, totalFeesCollected, totalValidatorPool } =
+      this.calculateIntervalBasedAllocations(
+        uniqueTimestamps,
+        initialStakes,
+        stakeUpdates,
+        initialFeeBalance,
+        feeSnapshots,
+        initialPerformanceScore,
+        performanceScores,
+        initialEthereumBlock
+      );
 
-    logger.info(`Processing ${validatorAllocations.size} validators`);
-    logger.info(`Tracked ${intervals.length} staking intervals`);
+    // Build metadata
+    const metadata: CalculationMetadata = {
+      startPolygonBlock,
+      endPolygonBlock,
+      startTimestamp,
+      endTimestamp,
+      startTimestampISO: new Date(startTimestamp * 1000).toISOString(),
+      endTimestampISO: new Date(endTimestamp * 1000).toISOString(),
+      blockProducerCommission: this.blockProducerCommission,
+      totalIntervals: intervals.length,
+      generatedAt: new Date().toISOString(),
+    };
 
-    // Convert to results format
-    const results = this.formatResults(validatorAllocations, performanceScores);
+    // Build summary
+    const summary: CalculationSummary = {
+      totalFeesCollected: ethers.formatEther(totalFeesCollected),
+      totalValidatorPool: ethers.formatEther(totalValidatorPool),
+      validatorCount: validatorAllocations.size,
+    };
 
-    // Validate total allocation
-    this.validateAllocation(results, validatorPool);
-
-    return { feeSplits: results, intervals };
+    return {
+      finalAllocations: validatorAllocations,
+      intervals,
+      metadata,
+      summary,
+    };
   }
 
   /**
    * Calculate validator pool after block producer commission
+   * E.g., with 26% commission: validatorShare = 1 - 0.26 = 0.74 (74% goes to validators)
    */
   private calculateValidatorPool(totalFees: bigint): bigint {
     const commission = BigInt(Math.floor(this.blockProducerCommission * 1e18));
@@ -107,112 +133,134 @@ export class FeeSplitCalculator {
   /**
    * Calculate interval-based fee allocations
    *
-   * Process each interval between consecutive checkpoints:
+   * Process each interval between consecutive timestamps:
    * 1. Start with initial stakes for all validators
    * 2. Apply StakeUpdate events as deltas to update stakes
-   * 3. Allocate fees collected during each interval based on current stake distribution
+   * 3. Allocate fees collected during each interval based on current stake distribution × performance deltas
    * 4. Accumulate allocations for each validator
    */
   private calculateIntervalBasedAllocations(
+    uniqueTimestamps: number[],
     initialStakes: Map<number, bigint>,
     stakeUpdates: StakeUpdateEvent[],
+    initialFeeBalance: bigint,
     feeSnapshots: FeeSnapshot[],
-    performanceScores: Map<number, ValidatorPerformance>
+    initialPerformanceScore: PerformanceScore,
+    performanceScores: PerformanceScore[],
+    initialEthereumBlock: number
   ): {
-    validatorAllocations: Map<number, { totalFees: bigint; blendedStake: bigint }>;
-    intervals: StakingInterval[];
+    validatorAllocations: Map<number, bigint>;
+    intervals: IntervalData[];
+    totalFeesCollected: bigint;
+    totalValidatorPool: bigint;
   } {
-    // Sort updates by timestamp to process chronologically
-    const sortedUpdates = [...stakeUpdates].sort((a, b) =>
-      a.blockTimestamp - b.blockTimestamp
-    );
 
-    // Group updates by timestamp (multiple validators can update in same block)
-    const updatesByTimestamp = new Map<number, StakeUpdateEvent[]>();
-    for (const update of sortedUpdates) {
-      if (!updatesByTimestamp.has(update.blockTimestamp)) {
-        updatesByTimestamp.set(update.blockTimestamp, []);
-      }
-      updatesByTimestamp.get(update.blockTimestamp)!.push(update);
+    // Ensure uniqueTimestamps are sorted in ascending order before use
+    uniqueTimestamps = [...uniqueTimestamps].sort((a, b) => a - b);
+
+    // Create a map from ethereum timestamp to stake update events for quick lookup
+    const stakeUpdateMap = new Map<number, StakeUpdateEvent[]>();
+    for (const update of stakeUpdates) {
+      const group = stakeUpdateMap.get(update.blockTimestamp) ?? [];
+      group.push(update);
+      stakeUpdateMap.set(update.blockTimestamp, group);
     }
 
-    // Get unique timestamps sorted chronologically
-    const uniqueTimestamps = Array.from(updatesByTimestamp.keys()).sort((a, b) => a - b);
-
     // Create a map from ethereum timestamp to fee snapshot for quick lookup
-    // If multiple snapshots exist for the same timestamp (due to multiple stake updates
-    // in the same block), keep only the first one which has the correct feeDelta
-    const snapshotMap = new Map<number, FeeSnapshot>();
+    const feeSnapshotMap = new Map<number, FeeSnapshot>();
     for (const snapshot of feeSnapshots) {
-      if (!snapshotMap.has(snapshot.ethereumTimestamp)) {
-        snapshotMap.set(snapshot.ethereumTimestamp, snapshot);
+      if (!feeSnapshotMap.has(snapshot.ethereumTimestamp)) {
+        feeSnapshotMap.set(snapshot.ethereumTimestamp, snapshot);
+      }
+    }
+
+    // Create a map from ethereum timestamp to performance score for quick lookup
+    const performanceMap = new Map<number, PerformanceScore>();
+    for (const score of performanceScores) {
+      if (!performanceMap.has(score.ethereumTimestamp)) {
+        performanceMap.set(score.ethereumTimestamp, score);
       }
     }
 
     // Initialize current stakes with initial state
-    const currentStakes = new Map(initialStakes);
+    let currentStakes = new Map(initialStakes);
+    let currentPerformanceScore = new Map(initialPerformanceScore.performanceScores);
+    let currentFee = initialFeeBalance;
+    let currentEthereumBlock = initialEthereumBlock;
+    let currentTimestamp = initialPerformanceScore.ethereumTimestamp;
 
     // Track accumulated fee allocations for each validator
     const accumulatedFees = new Map<number, bigint>();
 
-    // Track weighted stakes for blended calculation
-    // For each validator: sum(stake_i × validatorPool_i) / sum(validatorPool_i)
-    const weightedStakeSum = new Map<number, bigint>();
-    let totalValidatorPoolWeight = 0n;
+    // Collect interval data for reporting
+    const intervals: IntervalData[] = [];
+    let totalFeesCollected = 0n;
+    let totalValidatorPool = 0n;
 
-    // Track intervals for CSV export
-    const intervals: StakingInterval[] = [];
-
-    logger.info(`Processing ${uniqueTimestamps.length} unique checkpoints (${sortedUpdates.length} total stake updates)`);
+    logger.info(`Processing ${uniqueTimestamps.length} unique timestamps`);
     logger.info(`Initial validator count: ${currentStakes.size}`);
 
-    // Process each unique timestamp checkpoint
+    // Process each unique timestamp
     for (let i = 0; i < uniqueTimestamps.length; i++) {
       const timestamp = uniqueTimestamps[i];
-      const updatesAtTimestamp = updatesByTimestamp.get(timestamp)!;
-      const snapshot = snapshotMap.get(timestamp);
+      const feeSnapshot = feeSnapshotMap.get(timestamp);
 
-      if (!snapshot) {
+      if (!feeSnapshot) {
         throw new Error(
           `Missing fee snapshot for timestamp ${timestamp} (${new Date(timestamp * 1000).toISOString()}). ` +
           `This indicates a data collection error. All stake update timestamps must have corresponding fee snapshots.`
         );
       }
 
-      // Get the first update at this timestamp for interval tracking
-      const firstUpdate = updatesAtTimestamp[0];
-      const prevTimestamp = i > 0 ? uniqueTimestamps[i - 1] : timestamp;
-      const prevSnapshot = i > 0 ? snapshotMap.get(prevTimestamp) : snapshot;
+      const performanceScore = performanceMap.get(timestamp)?.performanceScores;
+      if (!performanceScore) {
+        throw new Error(
+          `Missing performance score for timestamp ${timestamp} (${new Date(timestamp * 1000).toISOString()}). ` +
+          `This indicates a data collection error. All stake update timestamps must have corresponding performance scores.`
+        );
+      }
+      logger.info(`Processing interval ${i + 1} with ending timestamp ${timestamp} (${new Date(timestamp * 1000).toISOString()})`);
 
-      // Track this interval
-      intervals.push({
-        intervalNumber: i,
-        startTimestamp: prevTimestamp,
-        startTimestampISO: new Date(prevTimestamp * 1000).toISOString(),
-        startEthereumBlock: prevSnapshot?.ethereumBlock || firstUpdate.blockNumber,
-        startPolygonBlock: prevSnapshot?.polygonBlock || 0,
-        endTimestamp: timestamp,
-        endTimestampISO: new Date(timestamp * 1000).toISOString(),
-        endEthereumBlock: firstUpdate.blockNumber,
-        endPolygonBlock: snapshot.polygonBlock,
-        feeBalance: snapshot.feeBalance,
-        feeDelta: snapshot.feeDelta,
-        validatorStakes: new Map(currentStakes), // Snapshot of stakes at start of interval
-      });
+      // Calculate the fee accrued from previous timestamp to this timestamp
+      const feeDelta = feeSnapshot.feeBalance - currentFee;
+      currentFee = feeSnapshot.feeBalance;
+      logger.info(`Fee delta: ${ethers.formatEther(feeDelta)} POL`);
 
-      if (i === 0) {
-        logger.debug(`First interval: feeDelta=${ethers.formatEther(snapshot.feeDelta)} POL, feeBalance=${ethers.formatEther(snapshot.feeBalance)} POL`);
+      // Calculate the performance score delta from previous timestamp to this timestamp
+      const performanceScoreDeltas = new Map<number, bigint>();
+
+      // Get all unique validator IDs from both current and new performance scores
+      const allValidatorIds = new Set<number>([
+        ...currentPerformanceScore.keys(),
+        ...performanceScore.keys()
+      ]);
+
+      // Calculate delta for each validator
+      for (const validatorId of allValidatorIds) {
+        const previousScore = currentPerformanceScore.get(validatorId) ?? 0n;
+        const currentScore = performanceScore.get(validatorId) ?? 0n;
+        const delta = currentScore - previousScore;
+        logger.debug(`Performance score delta for validator ${validatorId}: ${currentScore} - ${previousScore} = ${delta}`);
+        // Only record validators that will receive some rewards for this interval
+        if (delta > 0n) {
+          performanceScoreDeltas.set(validatorId, delta);
+        }
       }
 
-      // Allocate fees for this interval (before applying stake updates)
-      if (snapshot.feeDelta > 0n) {
-        // Calculate validator pool for this interval (after block producer commission)
-        const intervalValidatorPool = this.calculateValidatorPool(snapshot.feeDelta);
 
-        const intervalFees = this.allocateFeesForInterval(
+      // Allocate fees for this interval (before applying stake updates)
+      let intervalValidatorPool = 0n;
+      let intervalFees = new Map<number, bigint>();
+
+      if (feeDelta > 0n) {
+        // Calculate validator pool for this interval (after block producer commission)
+        intervalValidatorPool = this.calculateValidatorPool(feeDelta);
+        totalValidatorPool += intervalValidatorPool;
+        logger.info(`Interval validator pool: ${ethers.formatEther(intervalValidatorPool)} POL`);
+        intervalFees = this.allocateFeesForInterval(
           intervalValidatorPool,
           currentStakes,
-          performanceScores
+          performanceScoreDeltas,
         );
 
         // Accumulate fees for each validator
@@ -221,163 +269,123 @@ export class FeeSplitCalculator {
           accumulatedFees.set(valId, current + fees);
         }
 
-        // Accumulate weighted stakes for blended calculation
-        totalValidatorPoolWeight += intervalValidatorPool;
-        for (const [valId, stake] of currentStakes.entries()) {
-          const currentWeighted = weightedStakeSum.get(valId) || 0n;
-          // Multiply stake by pool weight (need to scale down later)
-          // We'll use integer math: weighted += stake * pool / 1e18
-          const weighted = (stake * intervalValidatorPool) / BigInt(1e18);
-          weightedStakeSum.set(valId, currentWeighted + weighted);
-        }
-
-        logger.debug(
+        logger.info(
           `Checkpoint ${i + 1}: Allocated ${ethers.formatEther(intervalValidatorPool)} POL ` +
-          `to ${intervalFees.size} validators (from ${ethers.formatEther(snapshot.feeDelta)} POL total fees, ` +
-          `${updatesAtTimestamp.length} validator update(s))`
+          `to ${intervalFees.size} validators (from ${ethers.formatEther(feeDelta)} POL total fees, `
         );
       }
 
-      // Now apply all stake updates at this timestamp
-      for (const update of updatesAtTimestamp) {
-        const validatorId = Number(update.validatorId);
-        currentStakes.set(validatorId, update.newAmount);
+      totalFeesCollected += feeDelta;
 
-        logger.debug(
-          `  Validator ${validatorId} stake updated to ${ethers.formatEther(update.newAmount)} POL`
-        );
+      // Get all validator IDs that participated (had stake or performance)
+      const allParticipatingValidators = new Set<number>([
+        //...currentStakes.keys(), // if they have a positive performance delta, they should have had a stake!
+        ...performanceScoreDeltas.keys(),
+      ]);
+
+      // Build validator data for this interval using stakes from BEFORE the updates
+      const validators: Record<number, ValidatorIntervalData> = {};
+
+      for (const validatorId of allParticipatingValidators) {
+        const stakeAtStart = currentStakes.get(validatorId) ?? 0n;
+        const performanceDelta = performanceScoreDeltas.get(validatorId) ?? 0n;
+        const feesAllocated = intervalFees.get(validatorId) ?? 0n;
+
+        validators[validatorId] = {
+          stakeAtStart: ethers.formatEther(stakeAtStart),
+          performanceDelta: performanceDelta.toString(),
+          feesAllocated: ethers.formatEther(feesAllocated),
+        };
       }
+
+      // Create interval data
+      const intervalData: IntervalData = {
+        intervalNumber: i,
+        startTimestamp: currentTimestamp,
+        endTimestamp: timestamp,
+        startTimestampISO: new Date(currentTimestamp * 1000).toISOString(),
+        endTimestampISO: new Date(timestamp * 1000).toISOString(),
+        ethereumBlockAtStart: currentEthereumBlock,
+        polygonBlockAtEnd: feeSnapshot.polygonBlock,
+        heimdallBlockAtEnd: performanceMap.get(timestamp)!.heimdallBlock,
+        feesCollected: ethers.formatEther(feeDelta),
+        validatorPoolFees: ethers.formatEther(intervalValidatorPool),
+        validators,
+      };
+      intervals.push(intervalData);
+
+      // Update current values for next iteration unless we're on the last interval
+      if (i < uniqueTimestamps.length - 1) {
+        currentTimestamp = timestamp;
+        currentPerformanceScore = new Map(performanceScore);
+      
+        // Now apply all stake updates at this timestamp
+        const stakeUpdatesAtTimestamp = stakeUpdateMap.get(timestamp) ?? [];
+        logger.info(`Updating ${stakeUpdatesAtTimestamp.length} validators at timestamp ${timestamp}`);
+
+        for (const update of stakeUpdatesAtTimestamp) {
+          const validatorId = Number(update.validatorId);
+          // Update current stakes for next interval
+          currentStakes.set(validatorId, update.newAmount);
+          logger.debug(
+            `  Validator ${validatorId} stake updated to ${ethers.formatEther(update.newAmount)} POL`
+          );
+          currentEthereumBlock = update.blockNumber; // every entry will have the same block number
+        }
+      }      
     }
 
-    // Calculate blended stakes for each validator
-    // blendedStake = sum(stake_i × validatorPool_i) / sum(validatorPool_i)
-    const validatorAllocations = new Map<number, { totalFees: bigint; blendedStake: bigint }>();
-
-    for (const [validatorId] of currentStakes.entries()) {
-      const weightedSum = weightedStakeSum.get(validatorId) || 0n;
-
-      // Calculate blended stake: (weightedSum / totalWeight) * 1e18
-      // We divided by 1e18 when accumulating, so multiply back and divide by total weight
-      const blendedStake = totalValidatorPoolWeight > 0n
-        ? (weightedSum * BigInt(1e18)) / totalValidatorPoolWeight
-        : 0n;
-
-      validatorAllocations.set(validatorId, {
-        totalFees: accumulatedFees.get(validatorId) || 0n,
-        blendedStake,
-      });
-    }
-
-    return { validatorAllocations, intervals };
+    return {
+      validatorAllocations: accumulatedFees,
+      intervals,
+      totalFeesCollected,
+      totalValidatorPool,
+    };
   }
 
   /**
    * Allocate fees for a single interval based on performance-weighted stakes
+   * Uses raw performance deltas (milestones signed) without normalization
+   *
+   * @param intervalFees - Total fees to allocate in this interval
+   * @param currentStakes - Current stake for each validator
+   * @param performanceDeltas - Performance score deltas for this interval (optional)
    */
   private allocateFeesForInterval(
     intervalFees: bigint,
     currentStakes: Map<number, bigint>,
-    performanceScores: Map<number, ValidatorPerformance>
+    performanceDeltas: Map<number, bigint>
   ): Map<number, bigint> {
     const allocations = new Map<number, bigint>();
 
-    // Calculate total performance-weighted stake
-    let totalWeightedStake = 0;
-    const weightedStakes = new Map<number, number>();
+    // Calculate total performance-weighted stake using BigInt for precision
+    let totalWeightedStake = 0n;
+    const weightedStakes = new Map<number, bigint>();
 
     for (const [validatorId, stake] of currentStakes.entries()) {
-      const performance = performanceScores.get(validatorId);
-      const performanceScore = performance?.normalizedScore || 0;
-      const stakeInEther = Number(ethers.formatEther(stake));
-      const weightedStake = stakeInEther * performanceScore;
+      const performanceDelta = performanceDeltas.get(validatorId) || 0n;
+
+      // weighted = stake * performanceDelta
+      // Both are bigints, result will be very large
+      const weightedStake = stake * performanceDelta;
 
       weightedStakes.set(validatorId, weightedStake);
       totalWeightedStake += weightedStake;
     }
 
     // Allocate fees proportionally
-    if (totalWeightedStake > 0) {
+    if (totalWeightedStake > 0n) {
       for (const [validatorId, weightedStake] of weightedStakes.entries()) {
-        const shareRatio = weightedStake / totalWeightedStake;
-        const allocation = (intervalFees * BigInt(Math.floor(shareRatio * 1e18))) / BigInt(1e18);
-        allocations.set(validatorId, allocation);
+        // allocation = intervalFees * weightedStake / totalWeightedStake
+        const allocation = (intervalFees * weightedStake) / totalWeightedStake;
+        if (allocation > 0n) {
+          allocations.set(validatorId, allocation);
+        }
       }
+    } else {
+      logger.warn('Total weighted stake is 0 for this interval, no fees allocated');
     }
 
     return allocations;
-  }
-
-  /**
-   * Format results for output
-   */
-  private formatResults(
-    validatorAllocations: Map<number, { totalFees: bigint; blendedStake: bigint }>,
-    performanceScores: Map<number, ValidatorPerformance>
-  ): FeeSplitResult[] {
-    const results: FeeSplitResult[] = [];
-
-    // Calculate total blended stake for ratio calculation
-    let totalBlendedStake = 0n;
-    for (const { blendedStake } of validatorAllocations.values()) {
-      totalBlendedStake += blendedStake;
-    }
-
-    for (const [validatorId, { totalFees, blendedStake }] of validatorAllocations.entries()) {
-      const stakeRatio = Number(blendedStake) / Number(totalBlendedStake);
-      const stakeInEther = Number(ethers.formatEther(blendedStake));
-
-      // Get the actual performance score for this validator
-      const performance = performanceScores.get(validatorId);
-      const performanceScore = performance?.normalizedScore || 0;
-      const performanceWeightedStake = stakeInEther * performanceScore;
-
-      results.push({
-        validatorId,
-        stakedAmount: blendedStake,
-        stakedAmountFormatted: ethers.formatEther(blendedStake),
-        stakeRatio,
-        performanceScore,
-        performanceWeightedStake,
-        feeAllocation: totalFees,
-        feeAllocationFormatted: ethers.formatEther(totalFees),
-      });
-    }
-
-    // Sort by fee allocation (highest first)
-    results.sort((a, b) => {
-      if (a.feeAllocation > b.feeAllocation) return -1;
-      if (a.feeAllocation < b.feeAllocation) return 1;
-      return 0;
-    });
-
-    return results;
-  }
-
-
-  /**
-   * Validate that total allocation matches validator pool
-   */
-  private validateAllocation(results: FeeSplitResult[], validatorPool: bigint): void {
-    const totalAllocated = results.reduce(
-      (sum, r) => sum + r.feeAllocation,
-      0n
-    );
-
-    const difference = validatorPool - totalAllocated;
-    const differenceInEther = Number(ethers.formatEther(difference < 0n ? -difference : difference));
-
-    logger.info(`Total allocated: ${ethers.formatEther(totalAllocated)} POL`);
-    logger.info(`Validator pool: ${ethers.formatEther(validatorPool)} POL`);
-    logger.info(`Difference: ${differenceInEther.toFixed(6)} POL`);
-
-    // Allow for small rounding errors (less than 0.001 POL)
-    if (differenceInEther > 0.001) {
-      logger.warn(
-        `Fee allocation validation warning: difference of ${differenceInEther.toFixed(6)} POL detected. ` +
-        'This may be due to rounding in the calculation.'
-      );
-    } else {
-      logger.info('Fee allocation validated successfully');
-    }
   }
 }
