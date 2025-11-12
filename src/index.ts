@@ -106,14 +106,14 @@ class FeeSplitApp {
 
       // Filter to only validators with non-zero stakes (active validators)
       const initialStakes = new Map<number, bigint>();
-      const validatorIds: number[] = [];
+      const initialValidatorIds: number[] = [];
       for (const [validatorId, stake] of allStakes.entries()) {
         if (stake > 0n) {
           initialStakes.set(validatorId, stake);
-          validatorIds.push(validatorId);
+          initialValidatorIds.push(validatorId);
         }
       }
-      logger.info(`Found ${validatorIds.length} active validators with non-zero stakes`);
+      logger.info(`Found ${initialValidatorIds.length} initial active validators with non-zero stakes`);
 
       // Step 3: Query initial fee balance
       logger.info('\n--- Step 3: Querying initial and final fee balances ---');
@@ -144,7 +144,11 @@ class FeeSplitApp {
         new Set([...stakeUpdates.map(u => u.blockTimestamp), endEthereumTimestamp])
       ).sort((a, b) => a - b);
       logger.info(`Found ${uniqueTimestamps.length} unique timestamps`);
-      // logger.info(`Unique timestamps: ${uniqueTimestamps.join(', ')}`);
+
+      const validatorIds = Array.from(initialValidatorIds);
+      validatorIds.push(...stakeUpdates.map(u => Number(u.validatorId)));
+      const uniqueValidatorIds = Array.from(new Set(validatorIds));
+      logger.info(`Found ${uniqueValidatorIds.length} unique validator IDs across all intervals`);
 
       // Step 5: Get Polygon fee balances for each StakeUpdate event on Ethereum
       logger.info('\n--- Step 5: Querying fee balances from Polygon ---');
@@ -167,12 +171,12 @@ class FeeSplitApp {
       logger.info('\n--- Step 6: Querying historical Heimdall performance scores ---');
       const { performanceScores } = await heimdallService.queryPerformanceScores(
         uniqueTimestamps,
-        validatorIds
+        uniqueValidatorIds
       );
 
       const initialPerformanceScore = await heimdallService.queryPerformanceScoreByTimestamp(
         startTimestamp,
-        validatorIds
+        uniqueValidatorIds
       );
 
       // Step 7: Calculate fee splits
