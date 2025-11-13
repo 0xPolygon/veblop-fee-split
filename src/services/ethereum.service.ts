@@ -132,16 +132,24 @@ export class EthereumService {
     const events: StakeUpdateEvent[] = [];
 
     // Query StakeUpdate events
-    const filter = this.contract.filters.StakeUpdate();
-    const logs = await this.rpcService.call(() =>
-      this.contract.queryFilter(filter, fromBlock, toBlock)
+    const stakeUpdateFilter = this.contract.filters.StakeUpdate();
+    const stakeUpdateLogs = await this.rpcService.call(() =>
+      this.contract.queryFilter(stakeUpdateFilter, fromBlock, toBlock)
     );
 
-    logger.debug(`Query chunk ${fromBlock}-${toBlock}: found ${logs.length} raw logs`);
+    logger.debug(`Query chunk ${fromBlock}-${toBlock}: found ${stakeUpdateLogs.length} StakeUpdate logs`);
 
-    // Process each event
-    for (const log of logs) {
-      logger.debug(`Processing log: ${log.constructor.name}`);
+    // Query Staked events (initial validator onboarding)
+    const stakedFilter = this.contract.filters.Staked();
+    const stakedLogs = await this.rpcService.call(() =>
+      this.contract.queryFilter(stakedFilter, fromBlock, toBlock)
+    );
+
+    logger.debug(`Query chunk ${fromBlock}-${toBlock}: found ${stakedLogs.length} Staked logs`);
+
+    // Process StakeUpdate events
+    for (const log of stakeUpdateLogs) {
+      logger.debug(`Processing StakeUpdate log: ${log.constructor.name}`);
 
       if (log instanceof EventLog) {
         logger.debug(`EventLog validated, getting block ${log.blockNumber}`);
@@ -155,7 +163,7 @@ export class EthereumService {
           throw new Error(`Failed to fetch block ${log.blockNumber}; cannot process events due to missing timestamp`);
         }
 
-        logger.debug(`Adding event for validator ${log.args.validatorId}`);
+        logger.debug(`Adding StakeUpdate event for validator ${log.args.validatorId}`);
         events.push({
           validatorId: log.args.validatorId,
           newAmount: log.args.newAmount,
@@ -168,7 +176,46 @@ export class EthereumService {
       }
     }
 
-    logger.debug(`Processed chunk ${fromBlock}-${toBlock}: returning ${events.length} events`);
+    // Process Staked events (initial validator onboarding)
+    for (const log of stakedLogs) {
+      logger.debug(`Processing Staked log: ${log.constructor.name}`);
+
+      if (log instanceof EventLog) {
+        logger.debug(`EventLog validated, getting block ${log.blockNumber}`);
+        // Get block timestamp
+        const block = await this.rpcService.call(() =>
+          this.provider.getBlock(log.blockNumber)
+        );
+
+        if (!block) {
+          logger.error(`Failed to fetch block ${log.blockNumber}, aborting`);
+          throw new Error(`Failed to fetch block ${log.blockNumber}; cannot process events due to missing timestamp`);
+        }
+
+        // Log Staked events (should be rare - initial validator onboarding only)
+        logger.info(
+          `Found Staked event for validator ${log.args.validatorId} ` +
+          `with initial amount ${ethers.formatEther(log.args.amount)} POL ` +
+          `at block ${log.blockNumber} (tx: ${log.transactionHash})`
+        );
+
+        logger.debug(`Adding Staked event for validator ${log.args.validatorId}`);
+        events.push({
+          validatorId: log.args.validatorId,
+          newAmount: log.args.amount, // Map 'amount' from Staked to 'newAmount' for StakeUpdateEvent
+          blockNumber: log.blockNumber,
+          blockTimestamp: block.timestamp,
+          transactionHash: log.transactionHash,
+        });
+      } else {
+        logger.debug(`Log is not EventLog, skipping`);
+      }
+    }
+
+    // Sort events by block number to maintain chronological order
+    events.sort((a, b) => a.blockNumber - b.blockNumber);
+
+    logger.debug(`Processed chunk ${fromBlock}-${toBlock}: returning ${events.length} total events`);
     return events;
   }
 
