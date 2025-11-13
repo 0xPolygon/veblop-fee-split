@@ -40,6 +40,7 @@ export async function binarySearchBlockByTimestampLte(
   let left = minBlock;
   let right = maxBlock;
   let result = left;
+  let retries = 0;
 
   logger.debug(`Binary search (<=) range: ${left} to ${right} for timestamp ${targetTimestamp}`);
 
@@ -49,11 +50,18 @@ export async function binarySearchBlockByTimestampLte(
     let block: TimestampedBlock | null;
     try {
       block = await fetchBlock(mid);
+      retries = 0;
     } catch (error) {
-      logger.warn(`Failed to fetch block ${mid}, searching earlier blocks`, {
+      logger.warn(`Failed to fetch block ${mid} (retries: ${retries})`, {
         error: error instanceof Error ? error.message : String(error)
       });
-      right = mid - 1;
+      // If we've retried 10 times, give up and search earlier blocks
+      retries++;
+      if (retries > 10) {
+        logger.warn(`Failed to fetch block ${mid} after 10 retries, searching earlier blocks`);
+        right = mid - 1;
+        retries = 0;
+      }
       continue;
     }
 
@@ -101,6 +109,7 @@ export async function binarySearchBlockByTimestampGte(
   let left = minBlock;
   let right = maxBlock;
   let result = right;
+  let retries = 0;
 
   logger.debug(`Binary search (>=) range: ${left} to ${right} for timestamp ${targetTimestamp}`);
 
@@ -110,11 +119,15 @@ export async function binarySearchBlockByTimestampGte(
     let block: TimestampedBlock | null;
     try {
       block = await fetchBlock(mid);
+      retries = 0;
     } catch (error) {
-      logger.warn(`Failed to fetch block ${mid}, searching earlier blocks`, {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      right = mid - 1;
+      // If we've retried 10 times, give up and search earlier blocks
+      retries++;
+      if (retries > 10) {
+        logger.warn(`Failed to fetch block ${mid} after 10 retries, searching earlier blocks`);
+        right = mid - 1;
+        retries = 0;
+      }
       continue;
     }
 

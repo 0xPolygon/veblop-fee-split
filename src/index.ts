@@ -114,6 +114,7 @@ class FeeSplitApp {
         }
       }
       logger.info(`Found ${initialValidatorIds.length} initial active validators with non-zero stakes`);
+      logger.info(`Initial validator IDs: ${initialValidatorIds.join(', ')}`);
 
       // Step 3: Query initial fee balance
       logger.info('\n--- Step 3: Querying initial and final fee balances ---');
@@ -149,6 +150,7 @@ class FeeSplitApp {
       validatorIds.push(...stakeUpdates.map(u => Number(u.validatorId)));
       const uniqueValidatorIds = Array.from(new Set(validatorIds));
       logger.info(`Found ${uniqueValidatorIds.length} unique validator IDs across all intervals`);
+      logger.info(`Unique validator IDs: ${uniqueValidatorIds.join(', ')}`);
 
       // Step 5: Get Polygon fee balances for each StakeUpdate event on Ethereum
       logger.info('\n--- Step 5: Querying fee balances from Polygon ---');
