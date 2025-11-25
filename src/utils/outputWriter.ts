@@ -20,9 +20,8 @@ export function writeDetailedReport(
   outputDir: string
 ): string {
   // Ensure output directory exists
-  const dir = path.dirname(outputDir);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
   }
 
   // Generate filename with block range and timestamp
@@ -56,9 +55,8 @@ export function writeTransferFile(
   outputDir: string
 ): string {
   // Ensure output directory exists
-  const dir = path.dirname(outputDir);
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
   }
 
   // Generate filename with block range and timestamp
