@@ -152,3 +152,19 @@ export interface TransferData {
     amount: string; // POL amount as decimal string
   }>;
 }
+
+/**
+ * Distribution made from the fee address
+ */
+export interface Distribution {
+  polygonBlock: number;
+  amount: string; // POL amount as decimal string
+  description?: string;
+}
+
+/**
+ * Configuration file for tracking distributions
+ */
+export interface DistributionConfig {
+  distributions: Distribution[];
+}
