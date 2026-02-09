@@ -128,7 +128,7 @@ export class HeimdallService {
         },
         {
           headers: { 'Content-Type': 'application/json' },
-          timeout: 10000
+          timeout: 1000000
         }
       );
 

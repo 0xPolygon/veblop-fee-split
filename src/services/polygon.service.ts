@@ -3,15 +3,18 @@
  */
 
 import { ethers } from 'ethers';
-import { FeeSnapshot, StakeUpdateEvent } from '../models/types';
+import { FeeSnapshot, StakeUpdateEvent, DistributionConfig, Distribution } from '../models/types';
 import { RpcService } from '../utils/rateLimit';
 import { BlockMapperService } from './blockMapper.service';
 import { logger, logProgress } from '../utils/logger';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class PolygonService {
   private provider: ethers.JsonRpcProvider;
   private rpcService: RpcService;
   private blockMapper: BlockMapperService;
+  private distributions: Distribution[] = [];
 
   constructor(
     rpcUrl: string,
@@ -21,6 +24,32 @@ export class PolygonService {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.rpcService = rpcService;
     this.blockMapper = blockMapper;
+    this.loadDistributions();
+  }
+
+  /**
+   * Load distributions from config file
+   */
+  private loadDistributions(): void {
+    try {
+      const configPath = path.join(process.cwd(), 'distributions.json');
+      if (fs.existsSync(configPath)) {
+        const configData = fs.readFileSync(configPath, 'utf-8');
+        const config: DistributionConfig = JSON.parse(configData);
+        this.distributions = config.distributions;
+        logger.info(`Loaded ${this.distributions.length} distribution(s) from config`);
+        for (const dist of this.distributions) {
+          logger.info(`  Block ${dist.polygonBlock}: ${dist.amount} POL${dist.description ? ` (${dist.description})` : ''}`);
+        }
+      } else {
+        logger.info('No distributions.json found, starting fresh');
+      }
+    } catch (error) {
+      logger.error('Failed to load distributions config', {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
   }
 
   /**
@@ -72,21 +101,38 @@ export class PolygonService {
   /**
    * Get contract balance at a specific block
    * Note: Requires archive node access for historical state
+   * Adjusts for distributions made from the fee address
    */
   async getBalanceAtBlock(
     address: string,
     blockNumber: number
   ): Promise<bigint> {
     try {
-      const balance = await this.rpcService.call(() =>
+      const rawBalance = await this.rpcService.call(() =>
         this.provider.getBalance(address, blockNumber)
       );
 
+      // Calculate total distributions that occurred at or before this block
+      let distributionsToAddBack = 0n;
+      for (const dist of this.distributions) {
+        if (dist.polygonBlock <= blockNumber) {
+          const amount = ethers.parseEther(dist.amount);
+          distributionsToAddBack += amount;
+          logger.debug(
+            `Adding back distribution from block ${dist.polygonBlock}: ${dist.amount} POL`
+          );
+        }
+      }
+
+      // Adjusted balance accounts for distributions
+      const adjustedBalance = rawBalance + distributionsToAddBack;
+
       logger.debug(
-        `Balance at block ${blockNumber}: ${ethers.formatEther(balance)} POL`
+        `Balance at block ${blockNumber}: ${ethers.formatEther(rawBalance)} POL (raw), ` +
+        `${ethers.formatEther(adjustedBalance)} POL (adjusted with ${ethers.formatEther(distributionsToAddBack)} POL added back)`
       );
 
-      return balance;
+      return adjustedBalance;
     } catch (error) {
       // Check if this is an archive node access error
       if (

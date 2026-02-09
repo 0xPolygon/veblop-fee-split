@@ -1,0 +1,29 @@
+{
+  "distributions": [
+    {
+      "polygonBlock": 79778286,
+      "amount": "1584288.60162948206074",
+      "description": "Validator Distribution - October 2025"
+    },
+    {
+      "polygonBlock": 81676926,
+      "amount": "1641943.183196858435569526",
+      "description": "Validator Distribution - November 2025"
+    },
+    {
+      "polygonBlock": 81954367,
+      "amount": "1",
+      "description": "Block Producer Commission (Test)"
+    },    
+    {
+      "polygonBlock": 81970745,
+      "amount": "1915067.883994674310293243",
+      "description": "Validator Distribution - December 2025"
+    },
+    {
+      "polygonBlock": 82158390,
+      "amount": "1808212",
+      "description": "Block Producer Commission"
+    }    
+  ]
+}
