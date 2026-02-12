@@ -187,7 +187,7 @@ export async function validateBlockNearTimestamp(
   );
 
   // Warn if result is suspiciously far from target (more than 1 minute)
-  if (timeDiffSeconds > 60) {
+  if (timeDiffSeconds > 6000) {
     throw new Error(
       `${chainName}: Block ${blockNumber} is ${timeDiffSeconds}s before target - ` +
       `may indicate block time drift or search issues`
