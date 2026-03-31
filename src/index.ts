@@ -16,6 +16,7 @@ import { FeeSplitCalculator } from './calculators/feeSplit.calculator';
 import { RpcService } from './utils/rateLimit';
 import { logger } from './utils/logger';
 import { writeDetailedReport, writeTransferFile } from './utils/outputWriter';
+import { StakingApiService } from './services/stakingApi.service';
 
 /**
  * Main application class
@@ -204,10 +205,15 @@ class FeeSplitApp {
       );
       logger.info(`Fee Splits: ${JSON.stringify(scoresObj, null, 2)}`);
 
-      // Step 8: Write output files
-      logger.info('\n--- Step 8: Writing output files ---');
-      const detailedReportPath = writeDetailedReport(result, config.outputPath);
-      const transferFilePath = writeTransferFile(result, config.outputPath);
+      // Step 8: Fetch validator signer addresses from Polygon Staking API
+      logger.info('\n--- Step 8: Fetching validator signer addresses ---');
+      const stakingApiService = new StakingApiService();
+      const signerMap = await stakingApiService.getValidatorSigners();
+
+      // Step 9: Write output files
+      logger.info('\n--- Step 9: Writing output files ---');
+      const detailedReportPath = writeDetailedReport(result, config.outputPath, signerMap);
+      const transferFilePath = writeTransferFile(result, config.outputPath, signerMap);
 
       logger.info('\n=== Processing completed successfully ===');
       logger.info(`Detailed report: ${detailedReportPath}`);
