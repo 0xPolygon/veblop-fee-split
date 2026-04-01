@@ -149,6 +149,7 @@ export interface TransferData {
   };
   allocations: Array<{
     validatorId: number;
+    signer: string; // Signer wallet address from Polygon Staking API
     amount: string; // POL amount as decimal string
   }>;
 }
