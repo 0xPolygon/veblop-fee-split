@@ -13,11 +13,13 @@ import { logger } from './logger';
  *
  * @param result - Complete calculation result with interval details
  * @param outputDir - Directory to write the file to
+ * @param signerMap - Map of validatorId -> signer address from Polygon Staking API
  * @returns Path to the generated file
  */
 export function writeDetailedReport(
   result: CalculationResult,
-  outputDir: string
+  outputDir: string,
+  signerMap: Map<number, string>
 ): string {
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -29,11 +31,25 @@ export function writeDetailedReport(
   const filename = `fee-splits-detailed-${result.metadata.startPolygonBlock}-${result.metadata.endPolygonBlock}-${timestamp}.json`;
   const filePath = path.join(outputDir, filename);
 
+  // Enrich each interval's validator entries with signer addresses
+  const enrichedIntervals = result.intervals.map(interval => ({
+    ...interval,
+    validators: Object.fromEntries(
+      Object.entries(interval.validators).map(([validatorId, data]) => [
+        validatorId,
+        {
+          signer: signerMap.get(Number(validatorId)) ?? 'unknown',
+          ...data,
+        },
+      ])
+    ),
+  }));
+
   // Build the output structure
   const output = {
     metadata: result.metadata,
     summary: result.summary,
-    intervals: result.intervals,
+    intervals: enrichedIntervals,
   };
 
   // Write to file with pretty formatting
@@ -48,11 +64,13 @@ export function writeDetailedReport(
  *
  * @param result - Complete calculation result
  * @param outputDir - Directory to write the file to
+ * @param signerMap - Map of validatorId -> signer address from Polygon Staking API
  * @returns Path to the generated file
  */
 export function writeTransferFile(
   result: CalculationResult,
-  outputDir: string
+  outputDir: string,
+  signerMap: Map<number, string>
 ): string {
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -64,10 +82,11 @@ export function writeTransferFile(
   const filename = `fee-splits-${result.metadata.startPolygonBlock}-${result.metadata.endPolygonBlock}-${timestamp}.json`;
   const filePath = path.join(outputDir, filename);
 
-  // Convert final allocations map to sorted array
+  // Convert final allocations map to sorted array, enriched with signer address
   const allocations = Array.from(result.finalAllocations.entries())
     .map(([validatorId, amount]) => ({
       validatorId,
+      signer: signerMap.get(validatorId) ?? 'unknown',
       amount: ethers.formatEther(amount),
     }))
     .sort((a, b) => a.validatorId - b.validatorId);
