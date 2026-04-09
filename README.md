@@ -1,6 +1,6 @@
 # Polygon PoS Validator Fee Split Calculator
 
-A Node.js application that calculates the distribution of transaction fees across Polygon PoS validators based on their stake and performance, following the [PIP-65 economic model](https://forum.polygon.technology/t/pip-65-economic-model-for-veblop-architecture/20933).
+A Node.js application that calculates the distribution of transaction fees across Polygon PoS validators based on stake and performance, following the original [PIP-65 economic model](https://forum.polygon.technology/t/pip-65-economic-model-for-veblop-architecture/20933) with the [PIP-85 adjustment](https://forum.polygon.technology/t/pip-85-veblop-pip-65-priority-fee-formula-adjustment/21829).
 
 ## Overview
 
@@ -11,18 +11,20 @@ This tool calculates fee distributions using an **interval-based allocation appr
 3. Creates time intervals between these consecutive stake updates (including the start and end Ethereum timestamps found in 1.)
 4. Maps the Ethereum timestamps at the end of each interval to a Polygon block (smallest block with an equal or later timestamp) and queries Polygon fee balances at each of these.
 5. Maps the Ethereum timestamps at the end of each interval to a Heimdall block (smallest block with an equal or later timestamp) and queries validator performance scores at each of these.
-6. For each interval allocates fees collected during that interval proportionally to validators based on:
-   - their stake at the start of the interval
-   - their performance during the interval
-7. Sums allocations across all intervals to calculate total fees per validator
+6. For each interval splits post-commission fees into a staker pool and a validator pool.
+7. Splits the validator pool into:
+   - a stake-weighted portion based on stake × performance
+   - an equal-share portion scaled by relative performance
+8. Tracks any undistributed equal-share amount as burn.
+9. Sums allocations across all intervals to calculate total fees per validator.
 
-The calculation uses the PIP-65 formula: `Rv = (Sv × Pv / Σ(Sv × Pv)) × Pool_interval`
+The validator side uses a PIP-85 adjusted interval formula:
 
-Where:
-- `Rv` = Validator reward for an interval
-- `Sv` = Validator's staked amount at the start of the interval
-- `Pv` = Performance score (number of signed milestones) during the interval
-- `Pool_interval` = Fees collected during interval × (1 - 0.26) [74% after block producer commission]
+- `postCommissionPool = feesCollected × (1 - commission)`
+- `stakersPool = postCommissionPool × stakersFeeRate`
+- `validatorsPool = postCommissionPool × (1 - stakersFeeRate)`
+- `stakeWeightedPool = validatorsPool × (1 - equalityFactor)`
+- `equalPool = validatorsPool × equalityFactor`
 
 ## Prerequisites
 
@@ -101,11 +103,11 @@ A comprehensive interval-by-interval breakdown containing:
   - Interval number and timestamps (start/end)
   - Ethereum block at interval start (used for stake queries)
   - Polygon and Heimdall blocks at interval end (used for fee and performance queries)
-  - Fees collected and validator pool for the interval
+  - Fees collected, staker pool, validator pool, and burn amount for the interval
   - Per-validator data:
     - Stake amount at interval start (POL)
     - Performance delta (milestone count)
-    - Fees allocated for this interval (POL)
+    - Stake-weighted, equal-share, and total fees allocated for this interval (POL)
 
 **Example structure:**
 ```json
@@ -116,12 +118,19 @@ A comprehensive interval-by-interval breakdown containing:
     "startTimestamp": 1234567890,
     "endTimestamp": 1234568000,
     "blockProducerCommission": 0.26,
+    "stakersFeeRate": 0.5,
+    "equalityFactor": 0.75,
     "totalIntervals": 5,
     "generatedAt": "2025-01-15T10:30:00.000Z"
   },
   "summary": {
     "totalFeesCollected": "903.456",
-    "totalValidatorPool": "668.557",
+    "totalPostCommissionPool": "668.557",
+    "totalStakersPool": "334.2785",
+    "totalValidatorPool": "334.2785",
+    "totalStakeWeightedValidatorPool": "83.569625",
+    "totalEqualValidatorPool": "250.708875",
+    "totalEqualPoolBurn": "12.345",
     "validatorCount": 106
   },
   "intervals": [
@@ -133,12 +142,21 @@ A comprehensive interval-by-interval breakdown containing:
       "polygonBlockAtEnd": 77414700,
       "heimdallBlockAtEnd": 56789,
       "feesCollected": "180.691",
-      "validatorPoolFees": "133.711",
+      "postCommissionPoolFees": "133.711",
+      "stakersPoolFees": "66.8555",
+      "validatorPoolFees": "66.8555",
+      "stakeWeightedValidatorPoolFees": "16.713875",
+      "equalValidatorPoolFees": "50.141625",
+      "equalPoolBurnFees": "2.5",
+      "perfectPerformance": "136",
+      "rewardedValidatorCount": 100,
       "validators": {
         "1": {
           "stakeAtStart": "10000.0",
           "performanceDelta": "5",
-          "feesAllocated": "1.234",
+          "stakeWeightedFeesAllocated": "0.5",
+          "equalFeesAllocated": "0.734",
+          "feesAllocated": "1.234"
         }
       }
     }
@@ -150,6 +168,7 @@ A comprehensive interval-by-interval breakdown containing:
 
 A simple file for executing transfers containing:
 - **Metadata**: Block range, total amount, validator count, commission rate
+- **Metadata** also includes aggregate staker-pool and burn totals for reconciliation
 - **Allocations**: Array of validator ID and amount pairs (sorted by validator ID)
 
 **Example structure:**
@@ -161,6 +180,10 @@ A simple file for executing transfers containing:
     "totalAmount": "668.557",
     "validatorCount": 106,
     "blockProducerCommission": 0.26,
+    "stakersFeeRate": 0.5,
+    "equalityFactor": 0.75,
+    "totalStakersPool": "334.2785",
+    "totalEqualPoolBurn": "12.345",
     "generatedAt": "2025-01-15T10:30:00.000Z"
   },
   "allocations": [
@@ -385,6 +408,8 @@ Configuration is done via environment variables in `.env`. Contract addresses ar
 | `POLYGON_RPC_URL` | Polygon PoS RPC URL (archive) | Required |
 | `HEIMDALL_RPC_URL` | Heimdall RPC URL | Required |
 | `BLOCK_PRODUCER_COMMISSION` | Producer commission rate | `0.26` (26%) |
+| `STAKERS_FEE_RATE` | Post-commission share reserved for stakers/delegators | `0.5` |
+| `EQUALITY_FACTOR` | Fraction of the validator pool allocated via the equal-share leg | `0.75` |
 | `OUTPUT_PATH` | Default output file path | `./output/fee-splits.json` |
 | `MAX_CONCURRENT_REQUESTS` | Max concurrent RPC calls | `3` |
 | `REQUEST_DELAY_MS` | Delay between requests | `200` |

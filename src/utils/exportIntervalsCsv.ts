@@ -36,10 +36,19 @@ interface DetailedReport {
     polygonBlockAtEnd: number;
     heimdallBlockAtEnd: number;
     feesCollected: string;
+    postCommissionPoolFees: string;
+    stakersPoolFees: string;
     validatorPoolFees: string;
+    stakeWeightedValidatorPoolFees: string;
+    equalValidatorPoolFees: string;
+    equalPoolBurnFees: string;
+    perfectPerformance: string;
+    rewardedValidatorCount: number;
     validators: Record<string, {
       stakeAtStart: string;
       performanceDelta: string;
+      stakeWeightedFeesAllocated: string;
+      equalFeesAllocated: string;
       feesAllocated: string;
     }>;
   }>;
@@ -89,6 +98,12 @@ function generateIntervalCSV(
   const validatorPoolFeesRow = ['Validator Pool Fees', interval.validatorPoolFees];
   lines.push(validatorPoolFeesRow.map(escapeCSV).join(','));
 
+  const stakersPoolFeesRow = ['Stakers Pool Fees', interval.stakersPoolFees];
+  lines.push(stakersPoolFeesRow.map(escapeCSV).join(','));
+
+  const equalBurnRow = ['Equal Pool Burn Fees', interval.equalPoolBurnFees];
+  lines.push(equalBurnRow.map(escapeCSV).join(','));
+
   // Header row: Validator IDs
   const headerRow = ['Validator ID', ...allValidatorIds.map(id => id.toString())];
   lines.push(headerRow.map(escapeCSV).join(','));
@@ -116,6 +131,20 @@ function generateIntervalCSV(
     feesRow.push(validator ? validator.feesAllocated : '0');
   }
   lines.push(feesRow.map(escapeCSV).join(','));
+
+  const stakeWeightedFeesRow = ['Stake-Weighted Fees (POL)'];
+  for (const validatorId of allValidatorIds) {
+    const validator = interval.validators[validatorId.toString()];
+    stakeWeightedFeesRow.push(validator ? validator.stakeWeightedFeesAllocated : '0');
+  }
+  lines.push(stakeWeightedFeesRow.map(escapeCSV).join(','));
+
+  const equalFeesRow = ['Equal Fees (POL)'];
+  for (const validatorId of allValidatorIds) {
+    const validator = interval.validators[validatorId.toString()];
+    equalFeesRow.push(validator ? validator.equalFeesAllocated : '0');
+  }
+  lines.push(equalFeesRow.map(escapeCSV).join(','));
 
   return lines.join('\n');
 }
