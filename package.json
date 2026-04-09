@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
+    "test": "tsx --test tests/**/*.test.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist",
     "validate": "node dist/utils/validateOutput.js",

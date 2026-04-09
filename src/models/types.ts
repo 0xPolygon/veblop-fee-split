@@ -50,6 +50,8 @@ export interface Config {
   ethereumStakingContract: string;
   polygonFeeContract: string;
   blockProducerCommission: number;
+  stakersFeeRate: number;
+  equalityFactor: number;
   outputPath: string;
   maxConcurrentRequests: number;
   requestDelayMs: number;
@@ -81,6 +83,8 @@ export interface RetryOptions {
 export interface ValidatorIntervalData {
   stakeAtStart: string; // POL amount as decimal string
   performanceDelta: string; // Raw milestone count as string
+  stakeWeightedFeesAllocated: string; // POL amount as decimal string
+  equalFeesAllocated: string; // POL amount as decimal string
   feesAllocated: string; // POL amount as decimal string
 }
 
@@ -97,7 +101,14 @@ export interface IntervalData {
   polygonBlockAtEnd: number;
   heimdallBlockAtEnd: number;
   feesCollected: string; // POL amount as decimal string
-  validatorPoolFees: string; // POL amount as decimal string (after commission)
+  postCommissionPoolFees: string; // POL amount as decimal string
+  stakersPoolFees: string; // POL amount as decimal string
+  validatorPoolFees: string; // POL amount as decimal string
+  stakeWeightedValidatorPoolFees: string; // POL amount as decimal string
+  equalValidatorPoolFees: string; // POL amount as decimal string
+  equalPoolBurnFees: string; // POL amount as decimal string
+  perfectPerformance: string; // Max observed performance delta for interval
+  rewardedValidatorCount: number;
   validators: Record<number, ValidatorIntervalData>; // validatorId -> data
 }
 
@@ -112,6 +123,8 @@ export interface CalculationMetadata {
   startTimestampISO: string;
   endTimestampISO: string;
   blockProducerCommission: number;
+  stakersFeeRate: number;
+  equalityFactor: number;
   totalIntervals: number;
   generatedAt: string;
 }
@@ -121,7 +134,12 @@ export interface CalculationMetadata {
  */
 export interface CalculationSummary {
   totalFeesCollected: string; // POL amount as decimal string
-  totalValidatorPool: string; // POL amount as decimal string (after commission)
+  totalPostCommissionPool: string; // POL amount as decimal string
+  totalStakersPool: string; // POL amount as decimal string
+  totalValidatorPool: string; // POL amount as decimal string
+  totalStakeWeightedValidatorPool: string; // POL amount as decimal string
+  totalEqualValidatorPool: string; // POL amount as decimal string
+  totalEqualPoolBurn: string; // POL amount as decimal string
   validatorCount: number;
 }
 
@@ -145,6 +163,10 @@ export interface TransferData {
     totalAmount: string; // POL amount as decimal string
     validatorCount: number;
     blockProducerCommission: number;
+    stakersFeeRate: number;
+    equalityFactor: number;
+    totalStakersPool: string;
+    totalEqualPoolBurn: string;
     generatedAt: string;
   };
   allocations: Array<{

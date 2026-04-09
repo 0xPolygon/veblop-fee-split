@@ -69,7 +69,11 @@ class FeeSplitApp {
       const heimdallBlockMapper = new HeimdallBlockMapperService(config.heimdallRpcUrl, heimdallRpc);
       const heimdallService = new HeimdallService(config.heimdallRpcUrl, heimdallRpc, heimdallBlockMapper);
 
-      const calculator = new FeeSplitCalculator(config.blockProducerCommission);
+      const calculator = new FeeSplitCalculator(
+        config.blockProducerCommission,
+        config.stakersFeeRate,
+        config.equalityFactor,
+      );
 
       // Step 0: Get Polygon block timestamps to determine Ethereum query range
       logger.info('\n--- Step 0: Getting Polygon block timestamps ---');

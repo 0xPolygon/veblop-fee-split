@@ -28,6 +28,8 @@ export function getConfig(): Config {
     ethereumStakingContract: ETHEREUM_STAKING_CONTRACT,
     polygonFeeContract: POLYGON_FEE_CONTRACT,
     blockProducerCommission: parseFloat(process.env.BLOCK_PRODUCER_COMMISSION || '0.26'),
+    stakersFeeRate: parseFloat(process.env.STAKERS_FEE_RATE || '0.5'),
+    equalityFactor: parseFloat(process.env.EQUALITY_FACTOR || '0.75'),
     outputPath: process.env.OUTPUT_PATH || './output/fee-splits.json',
     maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT_REQUESTS || '3', 10),
     requestDelayMs: parseInt(process.env.REQUEST_DELAY_MS || '200', 10),
@@ -46,6 +48,14 @@ export function getConfig(): Config {
 
   if (config.blockProducerCommission < 0 || config.blockProducerCommission >= 1) {
     errors.push('BLOCK_PRODUCER_COMMISSION must be between 0 and 1');
+  }
+
+  if (config.stakersFeeRate < 0 || config.stakersFeeRate > 1) {
+    errors.push('STAKERS_FEE_RATE must be between 0 and 1');
+  }
+
+  if (config.equalityFactor < 0 || config.equalityFactor > 1) {
+    errors.push('EQUALITY_FACTOR must be between 0 and 1');
   }
 
   if (errors.length > 0) {
