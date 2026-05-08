@@ -110,6 +110,7 @@ export class FeeSplitCalculator {
       totalValidatorPool,
       totalStakeWeightedValidatorPool,
       totalEqualValidatorPool,
+      totalEqualValidatorPoolDistributed,
       totalEqualPoolBurn,
     } =
       this.calculateIntervalBasedAllocations(
@@ -146,6 +147,7 @@ export class FeeSplitCalculator {
       totalValidatorPool: ethers.formatEther(totalValidatorPool),
       totalStakeWeightedValidatorPool: ethers.formatEther(totalStakeWeightedValidatorPool),
       totalEqualValidatorPool: ethers.formatEther(totalEqualValidatorPool),
+      totalEqualValidatorPoolDistributed: ethers.formatEther(totalEqualValidatorPoolDistributed),
       totalEqualPoolBurn: ethers.formatEther(totalEqualPoolBurn),
       validatorCount: validatorAllocations.size,
     };
@@ -201,6 +203,7 @@ export class FeeSplitCalculator {
     totalValidatorPool: bigint;
     totalStakeWeightedValidatorPool: bigint;
     totalEqualValidatorPool: bigint;
+    totalEqualValidatorPoolDistributed: bigint;
     totalEqualPoolBurn: bigint;
   } {
 
@@ -250,6 +253,7 @@ export class FeeSplitCalculator {
     let totalValidatorPool = 0n;
     let totalStakeWeightedValidatorPool = 0n;
     let totalEqualValidatorPool = 0n;
+    let totalEqualValidatorPoolDistributed = 0n;
     let totalEqualPoolBurn = 0n;
 
     logger.info(`Processing ${uniqueTimestamps.length} unique timestamps`);
@@ -319,6 +323,7 @@ export class FeeSplitCalculator {
       let intervalValidatorPool = 0n;
       let intervalStakeWeightedPool = 0n;
       let intervalEqualPool = 0n;
+      let intervalEqualPoolDistributed = 0n;
       let intervalEqualPoolBurn = 0n;
       let intervalPerfectPerformance = 0n;
       let intervalRewardedValidatorCount = 0;
@@ -352,8 +357,10 @@ export class FeeSplitCalculator {
         );
         intervalEqualFees = equalShareResult.allocations;
         intervalEqualPoolBurn = equalShareResult.burnAmount;
+        intervalEqualPoolDistributed = intervalEqualPool - intervalEqualPoolBurn;
         intervalPerfectPerformance = equalShareResult.perfectPerformance;
         intervalRewardedValidatorCount = equalShareResult.rewardedValidatorCount;
+        totalEqualValidatorPoolDistributed += intervalEqualPoolDistributed;
         totalEqualPoolBurn += intervalEqualPoolBurn;
 
         intervalFees = this.combineAllocations(intervalStakeWeightedFees, intervalEqualFees);
@@ -424,6 +431,7 @@ export class FeeSplitCalculator {
         validatorPoolFees: ethers.formatEther(intervalValidatorPool),
         stakeWeightedValidatorPoolFees: ethers.formatEther(intervalStakeWeightedPool),
         equalValidatorPoolFees: ethers.formatEther(intervalEqualPool),
+        equalValidatorPoolDistributedFees: ethers.formatEther(intervalEqualPoolDistributed),
         equalPoolBurnFees: ethers.formatEther(intervalEqualPoolBurn),
         perfectPerformance: intervalPerfectPerformance.toString(),
         rewardedValidatorCount: intervalRewardedValidatorCount,
@@ -465,6 +473,7 @@ export class FeeSplitCalculator {
       totalValidatorPool,
       totalStakeWeightedValidatorPool,
       totalEqualValidatorPool,
+      totalEqualValidatorPoolDistributed,
       totalEqualPoolBurn,
     };
   }

@@ -32,6 +32,7 @@ interface DetailedReport {
     totalValidatorPool: string;
     totalStakeWeightedValidatorPool: string;
     totalEqualValidatorPool: string;
+    totalEqualValidatorPoolDistributed?: string;
     totalEqualPoolBurn: string;
     validatorCount: number;
   };
@@ -45,6 +46,7 @@ interface DetailedReport {
     validatorPoolFees: string;
     stakeWeightedValidatorPoolFees: string;
     equalValidatorPoolFees: string;
+    equalValidatorPoolDistributedFees?: string;
     equalPoolBurnFees: string;
     perfectPerformance: string;
     rewardedValidatorCount: number;
@@ -117,6 +119,9 @@ function validateInterval(
   const expectedStakeWeightedPool = parsePOL(interval.stakeWeightedValidatorPoolFees);
   const expectedEqualPool = parsePOL(interval.equalValidatorPoolFees);
   const expectedEqualBurn = parsePOL(interval.equalPoolBurnFees);
+  const expectedEqualDistributed = typeof interval.equalValidatorPoolDistributedFees === 'string'
+    ? parsePOL(interval.equalValidatorPoolDistributedFees)
+    : undefined;
   const expectedPostCommissionPool = parsePOL(interval.postCommissionPoolFees);
   const expectedStakersPool = parsePOL(interval.stakersPoolFees);
 
@@ -143,6 +148,23 @@ function validateInterval(
   }
 
   const validatorCount = Object.keys(interval.validators).length;
+
+  if (expectedEqualDistributed === undefined) {
+    errors.push('missing equalValidatorPoolDistributedFees');
+  } else {
+    if (!almostEqual(expectedEqualDistributed, actualEqualTotal, validatorCount || 1)) {
+      errors.push(
+        `equal distributed allocation mismatch: expected ${interval.equalValidatorPoolDistributedFees} POL but got ${formatPOL(actualEqualTotal)} POL`
+      );
+    }
+
+    if (!almostEqual(expectedEqualPool, expectedEqualDistributed + expectedEqualBurn, 1)) {
+      errors.push(
+        `equal pool split mismatch: ${interval.equalValidatorPoolFees} POL != ` +
+        `${interval.equalValidatorPoolDistributedFees} POL distributed + ${interval.equalPoolBurnFees} POL burn`
+      );
+    }
+  }
 
   if (!almostEqual(expectedStakeWeightedPool, actualStakeWeightedTotal, validatorCount || 1)) {
     errors.push(
@@ -183,7 +205,7 @@ function validateInterval(
 
   const details =
     `Interval ${interval.intervalNumber}: stake-weighted=${formatPOL(actualStakeWeightedTotal)} POL, ` +
-    `equal=${formatPOL(actualEqualTotal)} POL, burn=${interval.equalPoolBurnFees} POL, ` +
+    `equal-distributed=${formatPOL(actualEqualTotal)} POL, burn=${interval.equalPoolBurnFees} POL, ` +
     `interval-total=${formatPOL(actualTotal)} POL`;
 
   if (errors.length === 0) {
@@ -207,6 +229,7 @@ function validateTotalFees(
   expectedTotalValidatorPool: string,
   expectedTotalStakeWeightedValidatorPool: string,
   expectedTotalEqualValidatorPool: string,
+  expectedTotalEqualValidatorPoolDistributed: string | undefined,
   expectedTotalEqualPoolBurn: string,
   expectedTotalFeesCollected: string,
   blockProducerCommission: number,
@@ -220,6 +243,7 @@ function validateTotalFees(
   let actualValidatorPoolTotal = 0n;
   let actualStakeWeightedPoolTotal = 0n;
   let actualEqualPoolTotal = 0n;
+  let actualEqualDistributedTotal = 0n;
   let actualBurnTotal = 0n;
   for (const interval of intervals) {
     actualPostCommissionTotal += parsePOL(interval.postCommissionPoolFees);
@@ -227,6 +251,11 @@ function validateTotalFees(
     actualValidatorPoolTotal += parsePOL(interval.validatorPoolFees);
     actualStakeWeightedPoolTotal += parsePOL(interval.stakeWeightedValidatorPoolFees);
     actualEqualPoolTotal += parsePOL(interval.equalValidatorPoolFees);
+    if (typeof interval.equalValidatorPoolDistributedFees === 'string') {
+      actualEqualDistributedTotal += parsePOL(interval.equalValidatorPoolDistributedFees);
+    } else {
+      errors.push(`Interval ${interval.intervalNumber} missing equalValidatorPoolDistributedFees`);
+    }
     actualBurnTotal += parsePOL(interval.equalPoolBurnFees);
   }
 
@@ -235,6 +264,9 @@ function validateTotalFees(
   const expectedValidatorPool = parsePOL(expectedTotalValidatorPool);
   const expectedStakeWeightedPool = parsePOL(expectedTotalStakeWeightedValidatorPool);
   const expectedEqualPool = parsePOL(expectedTotalEqualValidatorPool);
+  const expectedEqualDistributed = typeof expectedTotalEqualValidatorPoolDistributed === 'string'
+    ? parsePOL(expectedTotalEqualValidatorPoolDistributed)
+    : undefined;
   const expectedBurn = parsePOL(expectedTotalEqualPoolBurn);
   const diffValidatorPool = expectedValidatorPool > actualValidatorPoolTotal
     ? expectedValidatorPool - actualValidatorPoolTotal
@@ -245,6 +277,7 @@ function validateTotalFees(
   details.push(`Total Validator Pool: Expected ${expectedTotalValidatorPool} POL, Got ${formatPOL(actualValidatorPoolTotal)} POL, Diff: ${formatPOL(diffValidatorPool)} POL`);
   details.push(`Total Stake-Weighted Pool: Expected ${expectedTotalStakeWeightedValidatorPool} POL, Got ${formatPOL(actualStakeWeightedPoolTotal)} POL`);
   details.push(`Total Equal Pool: Expected ${expectedTotalEqualValidatorPool} POL, Got ${formatPOL(actualEqualPoolTotal)} POL`);
+  details.push(`Total Equal Distributed: Expected ${expectedTotalEqualValidatorPoolDistributed ?? 'missing'} POL, Got ${formatPOL(actualEqualDistributedTotal)} POL`);
   details.push(`Total Equal Burn: Expected ${expectedTotalEqualPoolBurn} POL, Got ${formatPOL(actualBurnTotal)} POL`);
 
   if (!almostEqual(expectedPostCommission, actualPostCommissionTotal, intervals.length || 1)) {
@@ -265,6 +298,18 @@ function validateTotalFees(
 
   if (!almostEqual(expectedEqualPool, actualEqualPoolTotal, intervals.length || 1)) {
     errors.push(`Total equal pool mismatch: expected ${expectedTotalEqualValidatorPool} POL but got ${formatPOL(actualEqualPoolTotal)} POL`);
+  }
+
+  if (expectedEqualDistributed === undefined) {
+    errors.push('Summary missing totalEqualValidatorPoolDistributed');
+  } else {
+    if (!almostEqual(expectedEqualDistributed, actualEqualDistributedTotal, intervals.length || 1)) {
+      errors.push(`Total equal distributed mismatch: expected ${expectedTotalEqualValidatorPoolDistributed} POL but got ${formatPOL(actualEqualDistributedTotal)} POL`);
+    }
+
+    if (!almostEqual(expectedEqualPool, expectedEqualDistributed + expectedBurn, intervals.length || 1)) {
+      errors.push(`Total equal pool split mismatch: expected ${expectedTotalEqualValidatorPool} POL but distributed plus burn equal ${formatPOL(expectedEqualDistributed + expectedBurn)}`);
+    }
   }
 
   if (!almostEqual(expectedBurn, actualBurnTotal, intervals.length || 1)) {
@@ -458,6 +503,9 @@ function validateFinalAllocations(
 
   const expectedStakeWeighted = parsePOL(detailedReport.summary.totalStakeWeightedValidatorPool);
   const expectedEqual = parsePOL(detailedReport.summary.totalEqualValidatorPool);
+  const expectedEqualDistributed = typeof detailedReport.summary.totalEqualValidatorPoolDistributed === 'string'
+    ? parsePOL(detailedReport.summary.totalEqualValidatorPoolDistributed)
+    : undefined;
   const expectedBurn = parsePOL(detailedReport.summary.totalEqualPoolBurn);
   const expectedValidatorTotal = parsePOL(detailedReport.summary.totalValidatorPool);
   const validatorCount = Math.max(Object.keys(finalAllocations).length, 1);
@@ -478,8 +526,16 @@ function validateFinalAllocations(
     errors.push(`Stake-weighted total mismatch: expected ${detailedReport.summary.totalStakeWeightedValidatorPool} POL but got ${formatPOL(totalStakeWeightedAllocated)} POL`);
   }
 
-  if (!almostEqual(expectedEqual, totalEqualAllocated + expectedBurn, validatorCount)) {
-    errors.push(`Equal-pool reconciliation mismatch: expected ${detailedReport.summary.totalEqualValidatorPool} POL but allocations plus burn equal ${formatPOL(totalEqualAllocated + expectedBurn)} POL`);
+  if (expectedEqualDistributed === undefined) {
+    errors.push('Summary missing totalEqualValidatorPoolDistributed');
+  } else {
+    if (!almostEqual(expectedEqualDistributed, totalEqualAllocated, validatorCount)) {
+      errors.push(`Equal distributed total mismatch: expected ${detailedReport.summary.totalEqualValidatorPoolDistributed} POL but got ${formatPOL(totalEqualAllocated)}`);
+    }
+
+    if (!almostEqual(expectedEqual, expectedEqualDistributed + expectedBurn, validatorCount)) {
+      errors.push(`Equal-pool reconciliation mismatch: expected ${detailedReport.summary.totalEqualValidatorPool} POL but distributed plus burn equal ${formatPOL(expectedEqualDistributed + expectedBurn)}`);
+    }
   }
 
   if (!almostEqual(expectedValidatorTotal, totalAllocated + expectedBurn, finalAllocationRoundingTolerance)) {
@@ -532,6 +588,7 @@ function validateOutputFiles(detailedReportPath: string, transferFilePath?: stri
     detailedReport.summary.totalValidatorPool,
     detailedReport.summary.totalStakeWeightedValidatorPool,
     detailedReport.summary.totalEqualValidatorPool,
+    detailedReport.summary.totalEqualValidatorPoolDistributed,
     detailedReport.summary.totalEqualPoolBurn,
     detailedReport.summary.totalFeesCollected,
     detailedReport.metadata.blockProducerCommission,

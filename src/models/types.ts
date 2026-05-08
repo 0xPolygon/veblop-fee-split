@@ -106,6 +106,7 @@ export interface IntervalData {
   validatorPoolFees: string; // POL amount as decimal string
   stakeWeightedValidatorPoolFees: string; // POL amount as decimal string
   equalValidatorPoolFees: string; // POL amount as decimal string
+  equalValidatorPoolDistributedFees: string; // POL amount as decimal string
   equalPoolBurnFees: string; // POL amount as decimal string
   perfectPerformance: string; // Raw milestone count as string
   rewardedValidatorCount: number;
@@ -139,6 +140,7 @@ export interface CalculationSummary {
   totalValidatorPool: string; // POL amount as decimal string
   totalStakeWeightedValidatorPool: string; // POL amount as decimal string
   totalEqualValidatorPool: string; // POL amount as decimal string
+  totalEqualValidatorPoolDistributed: string; // POL amount as decimal string
   totalEqualPoolBurn: string; // POL amount as decimal string
   validatorCount: number;
 }

@@ -22,13 +22,14 @@ import { StakingApiService } from './services/stakingApi.service';
  * Main application class
  */
 class FeeSplitApp {
-  async run(startBlock: number, endBlock: number, outputPath: string): Promise<void> {
+  async run(startBlock: number, endBlock: number, outputPath?: string): Promise<void> {
     logger.info('=== Polygon PoS Validator Fee Split Calculator ===');
     logger.info(`Analyzing Polygon blocks ${startBlock} to ${endBlock}`);
 
     try {
       // Load configuration
       const config = getConfig();
+      const effectiveOutputPath = outputPath ?? config.outputPath;
       logger.info('Configuration loaded successfully');
 
       // Initialize services
@@ -216,8 +217,8 @@ class FeeSplitApp {
 
       // Step 9: Write output files
       logger.info('\n--- Step 9: Writing output files ---');
-      const detailedReportPath = writeDetailedReport(result, config.outputPath, signerMap);
-      const transferFilePath = writeTransferFile(result, config.outputPath, signerMap);
+      const detailedReportPath = writeDetailedReport(result, effectiveOutputPath, signerMap);
+      const transferFilePath = writeTransferFile(result, effectiveOutputPath, signerMap);
 
       logger.info('\n=== Processing completed successfully ===');
       logger.info(`Detailed report: ${detailedReportPath}`);
@@ -252,7 +253,7 @@ program
   .version('1.0.0')
   .requiredOption('-s, --start-block <number>', 'Polygon starting block number')
   .requiredOption('-e, --end-block <number>', 'Polygon ending block number')
-  .option('-o, --output <path>', 'Output file path', './output/fee-splits.json')
+  .option('-o, --output <dir>', 'Output directory (overrides OUTPUT_PATH)')
   .action(async (options) => {
     const startBlock = parseInt(options.startBlock, 10);
     const endBlock = parseInt(options.endBlock, 10);

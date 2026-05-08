@@ -72,19 +72,19 @@ npm start -- --start-block 77414656 --end-block 77415299
 
 This is the recommended test case for verifying the tool works correctly.
 
-### Custom Output Path
+### Custom Output Directory
 
-Specify a custom output file:
+Specify a custom output directory:
 
 ```bash
-npm start -- --start-block 77414656 --end-block 77500000 --output ./results/my-analysis.json
+npm start -- --start-block 77414656 --end-block 77500000 --output ./results/
 ```
 
 ## CLI Options
 
 - `-s, --start-block <number>` - Starting Polygon block number (required)
 - `-e, --end-block <number>` - Ending Polygon block number (required)
-- `-o, --output <path>` - Output JSON file path (default: ./output/fee-splits.json)
+- `-o, --output <dir>` - Output directory (default: `OUTPUT_PATH`, or `./output/` if unset)
 - `-h, --help` - Display help information
 - `-V, --version` - Display version number
 
@@ -98,12 +98,12 @@ The tool generates two JSON files in the output directory (default: `./output/`)
 
 A comprehensive interval-by-interval breakdown containing:
 - **Metadata**: Block range, timestamps, commission rate, generation time
-- **Summary**: Total fees collected, validator pool, validator count
+- **Summary**: Total fees collected, pool totals, equal-share distributed amount, equal-share burn, and validator count
 - **Intervals**: For each staking interval:
   - Interval number and timestamps (start/end)
   - Ethereum block at interval start (used for stake queries)
   - Polygon and Heimdall blocks at interval end (used for fee and performance queries)
-  - Fees collected, staker pool, validator pool, and burn amount for the interval
+  - Fees collected, staker pool, validator pool, equal-share distributed amount, and burn amount for the interval
   - Per-validator data:
     - Stake amount at interval start (POL)
     - Performance delta (milestone count)
@@ -131,6 +131,7 @@ A comprehensive interval-by-interval breakdown containing:
     "totalValidatorPool": "334.2785",
     "totalStakeWeightedValidatorPool": "83.569625",
     "totalEqualValidatorPool": "250.708875",
+    "totalEqualValidatorPoolDistributed": "238.363875",
     "totalEqualPoolBurn": "12.345",
     "validatorCount": 106
   },
@@ -148,6 +149,7 @@ A comprehensive interval-by-interval breakdown containing:
       "validatorPoolFees": "66.8555",
       "stakeWeightedValidatorPoolFees": "16.713875",
       "equalValidatorPoolFees": "50.141625",
+      "equalValidatorPoolDistributedFees": "47.641625",
       "equalPoolBurnFees": "2.5",
       "perfectPerformance": "136",
       "rewardedValidatorCount": 100,
@@ -224,7 +226,7 @@ npm run validate ./output/fee-splits-detailed-77414656-77415299-2025-01-15.json 
 
 The validation script checks:
 - Stake-weighted and equal-share allocations reconcile within each interval
-- Equal-share allocations plus equal-pool burn match the interval and total equal pools
+- Equal-share distributed amounts plus equal-pool burn match the interval and total equal pools
 - Sum of fees and burn across all intervals matches the expected total validator pool
 - Commission calculation is correct (validator pool = total fees × (1 - commission))
 - Final allocations in transfer file match the detailed report
@@ -256,7 +258,7 @@ This creates a directory `intervals-{startBlock}-{endBlock}/` containing:
 One file per interval: `interval-000-{startTs}-{endTs}.csv`
 
 Each file has:
-- **Metadata rows**: Interval times, interval fee pools, burn amount, perfect performance, and rewarded validator count
+- **Metadata rows**: Interval times, interval fee pools, equal-share distributed amount, burn amount, perfect performance, and rewarded validator count
 - **Header row**: `Validator ID` followed by validator IDs (consistent across all files)
 - **Row 1**: Stake (POL)
 - **Row 2**: Performance Score
@@ -272,6 +274,7 @@ Validator Pool Fees,37.0
 Stakers Pool Fees,37.0
 Stake-Weighted Pool Fees,9.25
 Equal Pool Fees,27.75
+Equal Pool Distributed Fees,20.8125
 Equal Pool Burn Fees,6.9375
 Perfect Performance,136
 Rewarded Validator Count,100
@@ -450,7 +453,7 @@ Configuration is done via environment variables in `.env`. Contract addresses ar
 | `BLOCK_PRODUCER_COMMISSION` | Producer commission rate | `0.26` (26%) |
 | `STAKERS_FEE_RATE` | Post-commission share reserved for stakers/delegators | `0.5` |
 | `EQUALITY_FACTOR` | Fraction of the validator pool allocated via the equal-share leg | `0.75` |
-| `OUTPUT_PATH` | Default output file path | `./output/fee-splits.json` |
+| `OUTPUT_PATH` | Default output directory | `./output/` |
 | `MAX_CONCURRENT_REQUESTS` | Max concurrent RPC calls | `3` |
 | `REQUEST_DELAY_MS` | Delay between requests | `200` |
 | `MAX_RETRIES` | Max retry attempts | `3` |

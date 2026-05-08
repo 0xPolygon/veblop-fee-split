@@ -64,6 +64,7 @@ test('splits validator pool into stake-weighted, equal, stakers, and burn amount
   assert.equal(result.summary.totalValidatorPool, '37.0');
   assert.equal(result.summary.totalStakeWeightedValidatorPool, '9.25');
   assert.equal(result.summary.totalEqualValidatorPool, '27.75');
+  assert.equal(result.summary.totalEqualValidatorPoolDistributed, '20.8125');
   assert.equal(result.summary.totalEqualPoolBurn, '6.9375');
 
   assert.equal(ethers.formatEther(result.finalAllocations.get(1) ?? 0n), '18.5');
@@ -75,6 +76,7 @@ test('splits validator pool into stake-weighted, equal, stakers, and burn amount
   const interval = result.intervals[0];
   assert.equal(interval.stakersPoolFees, '37.0');
   assert.equal(interval.equalValidatorPoolFees, '27.75');
+  assert.equal(interval.equalValidatorPoolDistributedFees, '20.8125');
   assert.equal(interval.equalPoolBurnFees, '6.9375');
   assert.equal(interval.perfectPerformance, '10');
   assert.equal(interval.rewardedValidatorCount, 2);
@@ -170,6 +172,7 @@ test('allocates equal pool independently for each interval', () => {
   assert.equal(result.summary.totalValidatorPool, '200.0');
   assert.equal(result.summary.totalStakeWeightedValidatorPool, '0.0');
   assert.equal(result.summary.totalEqualValidatorPool, '200.0');
+  assert.equal(result.summary.totalEqualValidatorPoolDistributed, '175.0');
   assert.equal(result.summary.totalEqualPoolBurn, '25.0');
 
   assert.equal(ethers.formatEther(result.finalAllocations.get(1) ?? 0n), '50.0');
@@ -178,6 +181,7 @@ test('allocates equal pool independently for each interval', () => {
   assert.equal(ethers.formatEther(result.finalEqualAllocations.get(2) ?? 0n), '125.0');
 
   assert.equal(result.intervals[0].equalValidatorPoolFees, '100.0');
+  assert.equal(result.intervals[0].equalValidatorPoolDistributedFees, '75.0');
   assert.equal(result.intervals[0].equalPoolBurnFees, '25.0');
   assert.equal(result.intervals[0].perfectPerformance, '10');
   assert.equal(result.intervals[0].rewardedValidatorCount, 2);
@@ -185,6 +189,7 @@ test('allocates equal pool independently for each interval', () => {
   assert.equal(result.intervals[0].validators[2].equalFeesAllocated, '25.0');
 
   assert.equal(result.intervals[1].equalValidatorPoolFees, '100.0');
+  assert.equal(result.intervals[1].equalValidatorPoolDistributedFees, '100.0');
   assert.equal(result.intervals[1].equalPoolBurnFees, '0.0');
   assert.equal(result.intervals[1].perfectPerformance, '10');
   assert.equal(result.intervals[1].rewardedValidatorCount, 1);

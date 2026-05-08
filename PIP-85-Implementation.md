@@ -38,8 +38,9 @@ If the stake-weighted pool is non-zero but no validator with positive stake has 
 The equal pool is not always fully distributed. The undistributed amount is tracked as:
 
 - `equalPoolBurn = equalPool - sum(equalAllocation_v)`
+- `equalPoolDistributed = equalPool - equalPoolBurn`
 
-This amount is reported in the detailed and summary JSON outputs so it can be sent to a burn address downstream.
+Both the distributed and burn amounts are reported per interval and in the summary JSON output. The burn amount is sent to a burn address downstream, while the distributed amount reconciles the equal-share pool against the validator allocations.
 
 ## Performance normalization
 PIP-85 refers to performance relative to perfect performance. The current implementation intentionally does **not** derive a theoretical milestone-opportunity count from Heimdall. Instead, it uses:

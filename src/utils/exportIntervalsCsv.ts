@@ -43,6 +43,7 @@ interface DetailedReport {
     validatorPoolFees: string;
     stakeWeightedValidatorPoolFees: string;
     equalValidatorPoolFees: string;
+    equalValidatorPoolDistributedFees: string;
     equalPoolBurnFees: string;
     perfectPerformance: string;
     rewardedValidatorCount: number;
@@ -108,6 +109,9 @@ function generateIntervalCSV(
 
   const equalPoolFeesRow = ['Equal Pool Fees', interval.equalValidatorPoolFees];
   lines.push(equalPoolFeesRow.map(escapeCSV).join(','));
+
+  const equalPoolDistributedFeesRow = ['Equal Pool Distributed Fees', interval.equalValidatorPoolDistributedFees];
+  lines.push(equalPoolDistributedFeesRow.map(escapeCSV).join(','));
 
   const equalBurnFeesRow = ['Equal Pool Burn Fees', interval.equalPoolBurnFees];
   lines.push(equalBurnFeesRow.map(escapeCSV).join(','));
