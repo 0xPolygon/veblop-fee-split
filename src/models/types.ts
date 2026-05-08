@@ -113,15 +113,6 @@ export interface IntervalData {
 }
 
 /**
- * Final per-validator allocation data for the full analysis range
- */
-export interface FinalValidatorAllocationData {
-  stakeWeightedFeesAllocated: string; // POL amount as decimal string
-  equalFeesAllocated: string; // POL amount as decimal string
-  feesAllocated: string; // POL amount as decimal string
-}
-
-/**
  * Summary metadata for the entire calculation
  */
 export interface CalculationMetadata {

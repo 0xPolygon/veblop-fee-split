@@ -368,6 +368,75 @@ function validateTransferFile(
     errors.push(`Total amount mismatch: report shows ${formatPOL(reportTotal)} POL but transfer file shows ${transferFile.metadata.totalAmount} POL (difference: ${formatPOL(diffTotal)} POL)`);
   }
 
+  const reportStakersTotal = parsePOL(detailedReport.summary.totalStakersPool);
+  const reportBurnTotal = parsePOL(detailedReport.summary.totalEqualPoolBurn);
+  const reportNonValidatorTotal = reportStakersTotal + reportBurnTotal;
+
+  let transferStakersTotal: bigint | undefined;
+  let transferBurnTotal: bigint | undefined;
+
+  if (typeof transferFile.metadata.totalStakersPool !== 'string') {
+    errors.push('Transfer file metadata is missing totalStakersPool');
+  } else {
+    transferStakersTotal = parsePOL(transferFile.metadata.totalStakersPool);
+    const diffStakers = reportStakersTotal > transferStakersTotal
+      ? reportStakersTotal - transferStakersTotal
+      : transferStakersTotal - reportStakersTotal;
+
+    details.push(
+      `Stakers Pool: Report ${detailedReport.summary.totalStakersPool} POL, ` +
+      `Transfer ${transferFile.metadata.totalStakersPool} POL, Diff: ${formatPOL(diffStakers)} POL`
+    );
+
+    if (!almostEqual(reportStakersTotal, transferStakersTotal, 1)) {
+      errors.push(
+        `Stakers pool mismatch: report shows ${detailedReport.summary.totalStakersPool} POL but ` +
+        `transfer file shows ${transferFile.metadata.totalStakersPool} POL (difference: ${formatPOL(diffStakers)} POL)`
+      );
+    }
+  }
+
+  if (typeof transferFile.metadata.totalEqualPoolBurn !== 'string') {
+    errors.push('Transfer file metadata is missing totalEqualPoolBurn');
+  } else {
+    transferBurnTotal = parsePOL(transferFile.metadata.totalEqualPoolBurn);
+    const diffBurn = reportBurnTotal > transferBurnTotal
+      ? reportBurnTotal - transferBurnTotal
+      : transferBurnTotal - reportBurnTotal;
+
+    details.push(
+      `Equal Pool Burn: Report ${detailedReport.summary.totalEqualPoolBurn} POL, ` +
+      `Transfer ${transferFile.metadata.totalEqualPoolBurn} POL, Diff: ${formatPOL(diffBurn)} POL`
+    );
+
+    if (!almostEqual(reportBurnTotal, transferBurnTotal, 1)) {
+      errors.push(
+        `Equal pool burn mismatch: report shows ${detailedReport.summary.totalEqualPoolBurn} POL but ` +
+        `transfer file shows ${transferFile.metadata.totalEqualPoolBurn} POL (difference: ${formatPOL(diffBurn)} POL)`
+      );
+    }
+  }
+
+  if (transferStakersTotal !== undefined && transferBurnTotal !== undefined) {
+    const transferNonValidatorTotal = transferStakersTotal + transferBurnTotal;
+    const diffNonValidator = reportNonValidatorTotal > transferNonValidatorTotal
+      ? reportNonValidatorTotal - transferNonValidatorTotal
+      : transferNonValidatorTotal - reportNonValidatorTotal;
+
+    details.push(
+      `Non-Validator Total: Report ${formatPOL(reportNonValidatorTotal)} POL, ` +
+      `Transfer ${formatPOL(transferNonValidatorTotal)} POL, Diff: ${formatPOL(diffNonValidator)} POL`
+    );
+
+    if (!almostEqual(reportNonValidatorTotal, transferNonValidatorTotal, 2)) {
+      errors.push(
+        `Non-validator POL mismatch: report stakers + burn equals ${formatPOL(reportNonValidatorTotal)} POL but ` +
+        `transfer file stakers + burn equals ${formatPOL(transferNonValidatorTotal)} POL ` +
+        `(difference: ${formatPOL(diffNonValidator)} POL)`
+      );
+    }
+  }
+
   return { valid: errors.length === 0, errors, details };
 }
 

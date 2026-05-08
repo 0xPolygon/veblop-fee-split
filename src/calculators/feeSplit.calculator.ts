@@ -499,17 +499,25 @@ export class FeeSplitCalculator {
       totalWeightedStake += weightedStake;
     }
 
-    // Allocate fees proportionally
-    if (totalWeightedStake > 0n) {
-      for (const [validatorId, weightedStake] of weightedStakes.entries()) {
-        // allocation = intervalFees * weightedStake / totalWeightedStake
-        const allocation = (intervalFees * weightedStake) / totalWeightedStake;
-        if (allocation > 0n) {
-          allocations.set(validatorId, allocation);
-        }
+    if (totalWeightedStake === 0n) {
+      if (intervalFees === 0n) {
+        return allocations;
       }
-    } else {
-      logger.warn('Total weighted stake is 0 for this interval, no fees allocated');
+
+      throw new Error(
+        `Cannot allocate non-zero stake-weighted validator pool (${ethers.formatEther(intervalFees)} POL) ` +
+        `because total performance-weighted stake is 0. This means no validator with positive stake had ` +
+        `positive performance in the interval; aborting to avoid unaccounted validator funds.`
+      );
+    }
+
+    // Allocate fees proportionally
+    for (const [validatorId, weightedStake] of weightedStakes.entries()) {
+      // allocation = intervalFees * weightedStake / totalWeightedStake
+      const allocation = (intervalFees * weightedStake) / totalWeightedStake;
+      if (allocation > 0n) {
+        allocations.set(validatorId, allocation);
+      }
     }
 
     return allocations;

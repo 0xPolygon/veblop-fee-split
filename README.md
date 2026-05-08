@@ -177,7 +177,7 @@ A simple file for executing transfers containing:
   "metadata": {
     "startPolygonBlock": 77414656,
     "endPolygonBlock": 77415299,
-    "totalAmount": "668.557",
+    "totalAmount": "321.9335",
     "validatorCount": 106,
     "blockProducerCommission": 0.26,
     "stakersFeeRate": 0.5,

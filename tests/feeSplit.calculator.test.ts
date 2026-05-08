@@ -112,16 +112,15 @@ test('validators with zero performance are excluded from the equal-share denomin
   assert.equal(interval.validators[3], undefined);
 });
 
-test('interval equal pool fully burns when no validator has positive interval performance', () => {
-  const result = runSingleIntervalCalculation([
-    [1, 0n],
-    [2, 0n],
-    [3, 0n],
-  ]);
-
-  assert.equal(result.summary.totalEqualValidatorPool, '27.75');
-  assert.equal(result.summary.totalEqualPoolBurn, '27.75');
-  assert.equal(result.finalAllocations.size, 0);
+test('throws when a non-zero stake-weighted pool has zero total weighted stake', () => {
+  assert.throws(
+    () => runSingleIntervalCalculation([
+      [1, 0n],
+      [2, 0n],
+      [3, 0n],
+    ]),
+    /Cannot allocate non-zero stake-weighted validator pool.*total performance-weighted stake is 0/s,
+  );
 });
 
 test('allocates equal pool independently for each interval', () => {
