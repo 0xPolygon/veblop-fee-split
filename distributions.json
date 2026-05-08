@@ -36,14 +36,14 @@
       "description": "Block Producer Commission - February 2026"
     },
     {
-      "polygonBlock": 83593840,
-      "amount": "15479282.81",
-      "description": "Validator Distribution - March 2026"
-    },
-    {
       "polygonBlock": 84310742,
       "amount": "5438667.02",
       "description": "Block Producer Commission - March 2026"
+    },
+    {
+      "polygonBlock": 84321720,
+      "amount": "15479282.81",
+      "description": "Validator Distribution - March 2026"
     },
     {
       "polygonBlock": 85618320,
