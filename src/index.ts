@@ -136,8 +136,8 @@ class FeeSplitApp {
       );
       logger.info(`Final fee balance at block ${endBlock}: ${ethers.formatEther(finalFeeBalance)} POL`);
 
-      // Step 4: Query StakeUpdate events from Ethereum within the block range
-      logger.info('\n--- Step 4: Querying StakeUpdate events from Ethereum ---');
+      // Step 4: Query validator StakeUpdate events from Ethereum within the block range
+      logger.info('\n--- Step 4: Querying validator StakeUpdate events from Ethereum ---');
       const stakeUpdates = await ethereumService.getStakeUpdateEventsByBlocks(
         startEthereumBlock+1, //initial validator stakes are queried as of startEthereumBlock
         endEthereumBlock-1 //we don't need stake updates for the end block as they'd apply for the next period, which is out of scope

@@ -7,7 +7,9 @@
  * - Columns for each validator ID (consistent across all files)
  * - Row 1: Stake at interval start (POL)
  * - Row 2: Performance delta (milestone count)
- * - Row 3: Fees allocated (POL)
+ * - Row 3: Total fees allocated (POL)
+ * - Row 4: Stake-weighted fees allocated (POL)
+ * - Row 5: Equal fees allocated (POL)
  */
 
 import * as fs from 'fs';
@@ -40,10 +42,15 @@ interface DetailedReport {
     stakersPoolFees: string;
     validatorPoolFees: string;
     stakeWeightedValidatorPoolFees: string;
+    equalValidatorPoolFees: string;
+    equalPoolBurnFees: string;
+    perfectPerformance: string;
+    rewardedValidatorCount: number;
     validators: Record<string, {
       stakeAtStart: string;
       performanceDelta: string;
       stakeWeightedFeesAllocated: string;
+      equalFeesAllocated: string;
       feesAllocated: string;
     }>;
   }>;
@@ -96,6 +103,21 @@ function generateIntervalCSV(
   const stakersPoolFeesRow = ['Stakers Pool Fees', interval.stakersPoolFees];
   lines.push(stakersPoolFeesRow.map(escapeCSV).join(','));
 
+  const stakeWeightedPoolFeesRow = ['Stake-Weighted Pool Fees', interval.stakeWeightedValidatorPoolFees];
+  lines.push(stakeWeightedPoolFeesRow.map(escapeCSV).join(','));
+
+  const equalPoolFeesRow = ['Equal Pool Fees', interval.equalValidatorPoolFees];
+  lines.push(equalPoolFeesRow.map(escapeCSV).join(','));
+
+  const equalBurnFeesRow = ['Equal Pool Burn Fees', interval.equalPoolBurnFees];
+  lines.push(equalBurnFeesRow.map(escapeCSV).join(','));
+
+  const perfectPerformanceRow = ['Perfect Performance', interval.perfectPerformance];
+  lines.push(perfectPerformanceRow.map(escapeCSV).join(','));
+
+  const rewardedValidatorCountRow = ['Rewarded Validator Count', interval.rewardedValidatorCount.toString()];
+  lines.push(rewardedValidatorCountRow.map(escapeCSV).join(','));
+
   // Header row: Validator IDs
   const headerRow = ['Validator ID', ...allValidatorIds.map(id => id.toString())];
   lines.push(headerRow.map(escapeCSV).join(','));
@@ -130,6 +152,13 @@ function generateIntervalCSV(
     stakeWeightedFeesRow.push(validator ? validator.stakeWeightedFeesAllocated : '0');
   }
   lines.push(stakeWeightedFeesRow.map(escapeCSV).join(','));
+
+  const equalFeesRow = ['Equal Fees (POL)'];
+  for (const validatorId of allValidatorIds) {
+    const validator = interval.validators[validatorId.toString()];
+    equalFeesRow.push(validator ? validator.equalFeesAllocated : '0');
+  }
+  lines.push(equalFeesRow.map(escapeCSV).join(','));
 
   return lines.join('\n');
 }
@@ -253,6 +282,8 @@ if (require.main === module) {
     console.log('  - Row 1: Stake at Start (POL)');
     console.log('  - Row 2: Performance Delta (Milestones)');
     console.log('  - Row 3: Fees Allocated (POL)');
+    console.log('  - Row 4: Stake-Weighted Fees (POL)');
+    console.log('  - Row 5: Equal Fees (POL)');
     process.exit(1);
   }
 

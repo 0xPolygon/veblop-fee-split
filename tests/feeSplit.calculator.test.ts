@@ -74,8 +74,16 @@ test('splits validator pool into stake-weighted, equal, stakers, and burn amount
 
   const interval = result.intervals[0];
   assert.equal(interval.stakersPoolFees, '37.0');
+  assert.equal(interval.equalValidatorPoolFees, '27.75');
+  assert.equal(interval.equalPoolBurnFees, '6.9375');
+  assert.equal(interval.perfectPerformance, '10');
+  assert.equal(interval.rewardedValidatorCount, 2);
   assert.equal(interval.validators[1].stakeWeightedFeesAllocated, '4.625');
+  assert.equal(interval.validators[1].equalFeesAllocated, '13.875');
+  assert.equal(interval.validators[1].feesAllocated, '18.5');
   assert.equal(interval.validators[2].stakeWeightedFeesAllocated, '4.625');
+  assert.equal(interval.validators[2].equalFeesAllocated, '6.9375');
+  assert.equal(interval.validators[2].feesAllocated, '11.5625');
 });
 
 test('burn is zero when all rewarded validators have perfect performance', () => {
@@ -104,7 +112,7 @@ test('validators with zero performance are excluded from the equal-share denomin
   assert.equal(interval.validators[3], undefined);
 });
 
-test('whole-period equal pool fully burns when no validator has positive aggregate performance', () => {
+test('interval equal pool fully burns when no validator has positive interval performance', () => {
   const result = runSingleIntervalCalculation([
     [1, 0n],
     [2, 0n],
@@ -114,6 +122,75 @@ test('whole-period equal pool fully burns when no validator has positive aggrega
   assert.equal(result.summary.totalEqualValidatorPool, '27.75');
   assert.equal(result.summary.totalEqualPoolBurn, '27.75');
   assert.equal(result.finalAllocations.size, 0);
+});
+
+test('allocates equal pool independently for each interval', () => {
+  const calculator = new FeeSplitCalculator(0, 0, 1);
+
+  const result = calculator.calculate(
+    [200, 300],
+    new Map([
+      [1, ethers.parseEther('10')],
+      [2, ethers.parseEther('10')],
+    ]),
+    [] as StakeUpdateEvent[],
+    0n,
+    [
+      {
+        ethereumTimestamp: 200,
+        polygonBlock: 1000,
+        feeBalance: ethers.parseEther('100'),
+      } satisfies FeeSnapshot,
+      {
+        ethereumTimestamp: 300,
+        polygonBlock: 1001,
+        feeBalance: ethers.parseEther('200'),
+      } satisfies FeeSnapshot,
+    ],
+    makePerformanceScore(100, 500, [
+      [1, 0n],
+      [2, 0n],
+    ]),
+    [
+      makePerformanceScore(200, 600, [
+        [1, 10n],
+        [2, 5n],
+      ]),
+      makePerformanceScore(300, 700, [
+        [1, 10n],
+        [2, 15n],
+      ]),
+    ],
+    1,
+    2,
+    100,
+    300,
+    123,
+  );
+
+  assert.equal(result.summary.totalValidatorPool, '200.0');
+  assert.equal(result.summary.totalStakeWeightedValidatorPool, '0.0');
+  assert.equal(result.summary.totalEqualValidatorPool, '200.0');
+  assert.equal(result.summary.totalEqualPoolBurn, '25.0');
+
+  assert.equal(ethers.formatEther(result.finalAllocations.get(1) ?? 0n), '50.0');
+  assert.equal(ethers.formatEther(result.finalAllocations.get(2) ?? 0n), '125.0');
+  assert.equal(ethers.formatEther(result.finalEqualAllocations.get(1) ?? 0n), '50.0');
+  assert.equal(ethers.formatEther(result.finalEqualAllocations.get(2) ?? 0n), '125.0');
+
+  assert.equal(result.intervals[0].equalValidatorPoolFees, '100.0');
+  assert.equal(result.intervals[0].equalPoolBurnFees, '25.0');
+  assert.equal(result.intervals[0].perfectPerformance, '10');
+  assert.equal(result.intervals[0].rewardedValidatorCount, 2);
+  assert.equal(result.intervals[0].validators[1].equalFeesAllocated, '50.0');
+  assert.equal(result.intervals[0].validators[2].equalFeesAllocated, '25.0');
+
+  assert.equal(result.intervals[1].equalValidatorPoolFees, '100.0');
+  assert.equal(result.intervals[1].equalPoolBurnFees, '0.0');
+  assert.equal(result.intervals[1].perfectPerformance, '10');
+  assert.equal(result.intervals[1].rewardedValidatorCount, 1);
+  assert.equal(result.intervals[1].validators[1], undefined);
+  assert.equal(result.intervals[1].validators[2].equalFeesAllocated, '100.0');
 });
 
 test('throws when an interval has a negative fee delta', () => {

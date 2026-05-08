@@ -214,10 +214,11 @@ npm run validate ./output/fee-splits-detailed-77414656-77415299-2025-01-15.json 
 ```
 
 The validation script checks:
-- Sum of fees allocated to validators in each interval matches the interval total
-- Sum of fees across all intervals matches the expected total validator pool
+- Stake-weighted and equal-share allocations reconcile within each interval
+- Equal-share allocations plus equal-pool burn match the interval and total equal pools
+- Sum of fees and burn across all intervals matches the expected total validator pool
 - Commission calculation is correct (validator pool = total fees × (1 - commission))
-- Final allocations in transfer file match the sum across intervals in detailed report
+- Final allocations in transfer file match the detailed report
 
 The script uses precise BigInt arithmetic to avoid floating-point rounding errors and allows for minimal rounding differences (≤1 wei per validator) due to division.
 
