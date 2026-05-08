@@ -108,6 +108,7 @@ A comprehensive interval-by-interval breakdown containing:
     - Stake amount at interval start (POL)
     - Performance delta (milestone count)
     - Stake-weighted, equal-share, and total fees allocated for this interval (POL)
+- **Final Allocations**: Per-validator totals across all intervals, keyed by validator ID, including signer address and stake-weighted, equal-share, and total fees allocated
 
 **Example structure:**
 ```json
@@ -160,7 +161,15 @@ A comprehensive interval-by-interval breakdown containing:
         }
       }
     }
-  ]
+  ],
+  "finalAllocations": {
+    "1": {
+      "signer": "0x1234567890abcdef1234567890abcdef12345678",
+      "stakeWeightedFeesAllocated": "2.5",
+      "equalFeesAllocated": "3.67",
+      "feesAllocated": "6.17"
+    }
+  }
 }
 ```
 
