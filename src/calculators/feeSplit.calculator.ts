@@ -273,7 +273,18 @@ export class FeeSplitCalculator {
       logger.info(`Processing interval ${i + 1} with ending timestamp ${timestamp} (${new Date(timestamp * 1000).toISOString()})`);
 
       // Calculate the fee accrued from previous timestamp to this timestamp
-      const feeDelta = feeSnapshot.feeBalance - currentFee;
+      const previousFee = currentFee;
+      const feeDelta = feeSnapshot.feeBalance - previousFee;
+      if (feeDelta < 0n) {
+        throw new Error(
+          `Negative fee delta detected for interval ${i} ending at ${timestamp} ` +
+          `(${new Date(timestamp * 1000).toISOString()}, Polygon block ${feeSnapshot.polygonBlock}). ` +
+          `Previous adjusted fee balance was ${ethers.formatEther(previousFee)} POL, ` +
+          `current adjusted fee balance is ${ethers.formatEther(feeSnapshot.feeBalance)} POL, ` +
+          `delta is ${ethers.formatEther(feeDelta)} POL. ` +
+          `Fees should never be negative; check distributions.json for an incorrectly recorded distribution block.`
+        );
+      }
       currentFee = feeSnapshot.feeBalance;
       logger.info(`Fee delta: ${ethers.formatEther(feeDelta)} POL`);
 

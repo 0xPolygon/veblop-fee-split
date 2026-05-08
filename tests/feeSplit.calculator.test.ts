@@ -115,3 +115,31 @@ test('whole-period equal pool fully burns when no validator has positive aggrega
   assert.equal(result.summary.totalEqualPoolBurn, '27.75');
   assert.equal(result.finalAllocations.size, 0);
 });
+
+test('throws when an interval has a negative fee delta', () => {
+  const calculator = new FeeSplitCalculator(0.26, 0.5, 0.75);
+
+  assert.throws(
+    () => calculator.calculate(
+      [200],
+      new Map([[1, ethers.parseEther('10')]]),
+      [] as StakeUpdateEvent[],
+      ethers.parseEther('100'),
+      [
+        {
+          ethereumTimestamp: 200,
+          polygonBlock: 1000,
+          feeBalance: ethers.parseEther('99'),
+        } satisfies FeeSnapshot,
+      ],
+      makePerformanceScore(100, 500, [[1, 0n]]),
+      [makePerformanceScore(200, 600, [[1, 1n]])],
+      1,
+      2,
+      100,
+      200,
+      123,
+    ),
+    /Negative fee delta detected.*Polygon block 1000.*distributions\.json/s,
+  );
+});
