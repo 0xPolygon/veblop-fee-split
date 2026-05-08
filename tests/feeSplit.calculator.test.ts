@@ -68,17 +68,14 @@ test('splits validator pool into stake-weighted, equal, stakers, and burn amount
 
   assert.equal(ethers.formatEther(result.finalAllocations.get(1) ?? 0n), '18.5');
   assert.equal(ethers.formatEther(result.finalAllocations.get(2) ?? 0n), '11.5625');
+  assert.equal(ethers.formatEther(result.finalStakeWeightedAllocations.get(1) ?? 0n), '4.625');
+  assert.equal(ethers.formatEther(result.finalEqualAllocations.get(1) ?? 0n), '13.875');
   assert.equal(result.finalAllocations.has(3), false);
 
   const interval = result.intervals[0];
-  assert.equal(interval.rewardedValidatorCount, 2);
-  assert.equal(interval.perfectPerformance, '10');
   assert.equal(interval.stakersPoolFees, '37.0');
-  assert.equal(interval.equalPoolBurnFees, '6.9375');
   assert.equal(interval.validators[1].stakeWeightedFeesAllocated, '4.625');
-  assert.equal(interval.validators[1].equalFeesAllocated, '13.875');
   assert.equal(interval.validators[2].stakeWeightedFeesAllocated, '4.625');
-  assert.equal(interval.validators[2].equalFeesAllocated, '6.9375');
 });
 
 test('burn is zero when all rewarded validators have perfect performance', () => {
@@ -101,10 +98,20 @@ test('validators with zero performance are excluded from the equal-share denomin
   ]);
 
   const interval = result.intervals[0];
-  assert.equal(interval.rewardedValidatorCount, 1);
-  assert.equal(interval.perfectPerformance, '8');
-  assert.equal(interval.equalPoolBurnFees, '0.0');
-  assert.equal(interval.validators[1].equalFeesAllocated, '27.75');
+  assert.equal(ethers.formatEther(result.finalEqualAllocations.get(1) ?? 0n), '27.75');
+  assert.equal(result.finalEqualAllocations.has(2), false);
   assert.equal(interval.validators[2], undefined);
   assert.equal(interval.validators[3], undefined);
+});
+
+test('whole-period equal pool fully burns when no validator has positive aggregate performance', () => {
+  const result = runSingleIntervalCalculation([
+    [1, 0n],
+    [2, 0n],
+    [3, 0n],
+  ]);
+
+  assert.equal(result.summary.totalEqualValidatorPool, '27.75');
+  assert.equal(result.summary.totalEqualPoolBurn, '27.75');
+  assert.equal(result.finalAllocations.size, 0);
 });

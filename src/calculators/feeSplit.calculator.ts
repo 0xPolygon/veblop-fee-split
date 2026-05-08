@@ -101,6 +101,8 @@ export class FeeSplitCalculator {
     // Process intervals and accumulate fee allocations
     const {
       validatorAllocations,
+      stakeWeightedAllocations,
+      equalAllocations,
       intervals,
       totalFeesCollected,
       totalPostCommissionPool,
@@ -150,6 +152,8 @@ export class FeeSplitCalculator {
 
     return {
       finalAllocations: validatorAllocations,
+      finalStakeWeightedAllocations: stakeWeightedAllocations,
+      finalEqualAllocations: equalAllocations,
       intervals,
       metadata,
       summary,
@@ -185,6 +189,8 @@ export class FeeSplitCalculator {
     initialEthereumBlock: number
   ): {
     validatorAllocations: Map<number, bigint>;
+    stakeWeightedAllocations: Map<number, bigint>;
+    equalAllocations: Map<number, bigint>;
     intervals: IntervalData[];
     totalFeesCollected: bigint;
     totalPostCommissionPool: bigint;
@@ -230,7 +236,7 @@ export class FeeSplitCalculator {
     let currentTimestamp = initialPerformanceScore.ethereumTimestamp;
 
     // Track accumulated fee allocations for each validator
-    const accumulatedFees = new Map<number, bigint>();
+    const accumulatedStakeWeightedFees = new Map<number, bigint>();
 
     // Collect interval data for reporting
     const intervals: IntervalData[] = [];
@@ -299,12 +305,8 @@ export class FeeSplitCalculator {
       let intervalValidatorPool = 0n;
       let intervalStakeWeightedPool = 0n;
       let intervalEqualPool = 0n;
-      let intervalEqualPoolBurn = 0n;
       let intervalStakeWeightedFees = new Map<number, bigint>();
-      let intervalEqualFees = new Map<number, bigint>();
       let intervalFees = new Map<number, bigint>();
-      let perfectPerformance = 0n;
-      let rewardedValidatorCount = 0;
 
       if (feeDelta > 0n) {
         intervalPostCommissionPool = feeDelta - this.scaleByRate(feeDelta, this.blockProducerCommission);
@@ -325,23 +327,12 @@ export class FeeSplitCalculator {
           currentStakes,
           performanceScoreDeltas,
         );
-
-        const equalShareResult = this.allocateEqualFeesForInterval(
-          intervalEqualPool,
-          performanceScoreDeltas,
-        );
-        intervalEqualFees = equalShareResult.allocations;
-        intervalEqualPoolBurn = equalShareResult.burnAmount;
-        perfectPerformance = equalShareResult.perfectPerformance;
-        rewardedValidatorCount = equalShareResult.rewardedValidatorCount;
-        totalEqualPoolBurn += intervalEqualPoolBurn;
-
-        intervalFees = this.combineAllocations(intervalStakeWeightedFees, intervalEqualFees);
+        intervalFees = new Map(intervalStakeWeightedFees);
 
         // Accumulate fees for each validator
         for (const [valId, fees] of intervalFees.entries()) {
-          const current = accumulatedFees.get(valId) || 0n;
-          accumulatedFees.set(valId, current + fees);
+          const current = accumulatedStakeWeightedFees.get(valId) || 0n;
+          accumulatedStakeWeightedFees.set(valId, current + fees);
         }
 
         logger.info(
@@ -365,14 +356,12 @@ export class FeeSplitCalculator {
         const stakeAtStart = currentStakes.get(validatorId) ?? 0n;
         const performanceDelta = performanceScoreDeltas.get(validatorId) ?? 0n;
         const stakeWeightedFeesAllocated = intervalStakeWeightedFees.get(validatorId) ?? 0n;
-        const equalFeesAllocated = intervalEqualFees.get(validatorId) ?? 0n;
         const feesAllocated = intervalFees.get(validatorId) ?? 0n;
 
         validators[validatorId] = {
           stakeAtStart: ethers.formatEther(stakeAtStart),
           performanceDelta: performanceDelta.toString(),
           stakeWeightedFeesAllocated: ethers.formatEther(stakeWeightedFeesAllocated),
-          equalFeesAllocated: ethers.formatEther(equalFeesAllocated),
           feesAllocated: ethers.formatEther(feesAllocated),
         };
       }
@@ -392,10 +381,6 @@ export class FeeSplitCalculator {
         stakersPoolFees: ethers.formatEther(intervalStakersPool),
         validatorPoolFees: ethers.formatEther(intervalValidatorPool),
         stakeWeightedValidatorPoolFees: ethers.formatEther(intervalStakeWeightedPool),
-        equalValidatorPoolFees: ethers.formatEther(intervalEqualPool),
-        equalPoolBurnFees: ethers.formatEther(intervalEqualPoolBurn),
-        perfectPerformance: perfectPerformance.toString(),
-        rewardedValidatorCount,
         validators,
       };
       intervals.push(intervalData);
@@ -421,8 +406,21 @@ export class FeeSplitCalculator {
       }      
     }
 
+    const aggregatePerformanceDeltas = this.calculateAggregatePerformanceDeltas(
+      initialPerformanceScore.performanceScores,
+      performanceMap.get(uniqueTimestamps[uniqueTimestamps.length - 1])?.performanceScores ?? new Map(),
+    );
+    const equalShareResult = this.allocateEqualFeesForInterval(
+      totalEqualValidatorPool,
+      aggregatePerformanceDeltas,
+    );
+    totalEqualPoolBurn = equalShareResult.burnAmount;
+    const finalAllocations = this.combineAllocations(accumulatedStakeWeightedFees, equalShareResult.allocations);
+
     return {
-      validatorAllocations: accumulatedFees,
+      validatorAllocations: finalAllocations,
+      stakeWeightedAllocations: accumulatedStakeWeightedFees,
+      equalAllocations: equalShareResult.allocations,
       intervals,
       totalFeesCollected,
       totalPostCommissionPool,
@@ -432,6 +430,28 @@ export class FeeSplitCalculator {
       totalEqualValidatorPool,
       totalEqualPoolBurn,
     };
+  }
+
+  private calculateAggregatePerformanceDeltas(
+    initialScores: Map<number, bigint>,
+    finalScores: Map<number, bigint>
+  ): Map<number, bigint> {
+    const deltas = new Map<number, bigint>();
+    const allValidatorIds = new Set<number>([
+      ...initialScores.keys(),
+      ...finalScores.keys(),
+    ]);
+
+    for (const validatorId of allValidatorIds) {
+      const initialScore = initialScores.get(validatorId) ?? 0n;
+      const finalScore = finalScores.get(validatorId) ?? 0n;
+      const delta = finalScore - initialScore;
+      if (delta > 0n) {
+        deltas.set(validatorId, delta);
+      }
+    }
+
+    return deltas;
   }
 
   /**
@@ -496,7 +516,7 @@ export class FeeSplitCalculator {
     if (equalPool === 0n || rewardedValidators.length === 0) {
       return {
         allocations,
-        burnAmount: 0n,
+        burnAmount: equalPool,
         perfectPerformance: 0n,
         rewardedValidatorCount: rewardedValidators.length,
       };

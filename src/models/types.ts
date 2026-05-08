@@ -84,7 +84,6 @@ export interface ValidatorIntervalData {
   stakeAtStart: string; // POL amount as decimal string
   performanceDelta: string; // Raw milestone count as string
   stakeWeightedFeesAllocated: string; // POL amount as decimal string
-  equalFeesAllocated: string; // POL amount as decimal string
   feesAllocated: string; // POL amount as decimal string
 }
 
@@ -105,11 +104,16 @@ export interface IntervalData {
   stakersPoolFees: string; // POL amount as decimal string
   validatorPoolFees: string; // POL amount as decimal string
   stakeWeightedValidatorPoolFees: string; // POL amount as decimal string
-  equalValidatorPoolFees: string; // POL amount as decimal string
-  equalPoolBurnFees: string; // POL amount as decimal string
-  perfectPerformance: string; // Max observed performance delta for interval
-  rewardedValidatorCount: number;
   validators: Record<number, ValidatorIntervalData>; // validatorId -> data
+}
+
+/**
+ * Final per-validator allocation data for the full analysis range
+ */
+export interface FinalValidatorAllocationData {
+  stakeWeightedFeesAllocated: string; // POL amount as decimal string
+  equalFeesAllocated: string; // POL amount as decimal string
+  feesAllocated: string; // POL amount as decimal string
 }
 
 /**
@@ -148,6 +152,8 @@ export interface CalculationSummary {
  */
 export interface CalculationResult {
   finalAllocations: Map<number, bigint>; // validatorId -> total allocated fees (bigint for precision)
+  finalStakeWeightedAllocations: Map<number, bigint>; // validatorId -> total stake-weighted fees
+  finalEqualAllocations: Map<number, bigint>; // validatorId -> total whole-period equal fees
   intervals: IntervalData[];
   metadata: CalculationMetadata;
   summary: CalculationSummary;

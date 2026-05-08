@@ -45,11 +45,26 @@ export function writeDetailedReport(
     ),
   }));
 
+  const finalAllocations = Object.fromEntries(
+    Array.from(result.finalAllocations.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([validatorId, amount]) => [
+        validatorId,
+        {
+          signer: signerMap.get(validatorId) ?? 'unknown',
+          stakeWeightedFeesAllocated: ethers.formatEther(result.finalStakeWeightedAllocations.get(validatorId) ?? 0n),
+          equalFeesAllocated: ethers.formatEther(result.finalEqualAllocations.get(validatorId) ?? 0n),
+          feesAllocated: ethers.formatEther(amount),
+        },
+      ])
+  );
+
   // Build the output structure
   const output = {
     metadata: result.metadata,
     summary: result.summary,
     intervals: enrichedIntervals,
+    finalAllocations,
   };
 
   // Write to file with pretty formatting
