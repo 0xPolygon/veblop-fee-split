@@ -5,8 +5,8 @@
  *
  * Creates one CSV file per interval with:
  * - Columns for each validator ID (consistent across all files)
- * - Row 1: Stake at interval start (POL)
- * - Row 2: Performance delta (milestone count)
+ * - Row 1: Stake (POL)
+ * - Row 2: Performance Score
  * - Row 3: Total fees allocated (POL)
  * - Row 4: Stake-weighted fees allocated (POL)
  * - Row 5: Equal fees allocated (POL)
@@ -279,8 +279,8 @@ if (require.main === module) {
     console.log('    - Summary file: summary-totals.csv');
     console.log('\nEach interval CSV has:');
     console.log('  - Header row: Validator IDs (consistent across all files)');
-    console.log('  - Row 1: Stake at Start (POL)');
-    console.log('  - Row 2: Performance Delta (Milestones)');
+    console.log('  - Row 1: Stake (POL)');
+    console.log('  - Row 2: Performance Score');
     console.log('  - Row 3: Fees Allocated (POL)');
     console.log('  - Row 4: Stake-Weighted Fees (POL)');
     console.log('  - Row 5: Equal Fees (POL)');

@@ -247,17 +247,31 @@ This creates a directory `intervals-{startBlock}-{endBlock}/` containing:
 One file per interval: `interval-000-{startTs}-{endTs}.csv`
 
 Each file has:
-- **Header row**: Validator IDs (consistent across all files)
-- **Row 1**: Stake at Start (POL)
-- **Row 2**: Performance Delta (Milestones)
+- **Metadata rows**: Interval times, interval fee pools, burn amount, perfect performance, and rewarded validator count
+- **Header row**: `Validator ID` followed by validator IDs (consistent across all files)
+- **Row 1**: Stake (POL)
+- **Row 2**: Performance Score
 - **Row 3**: Fees Allocated (POL)
+- **Row 4**: Stake-Weighted Fees (POL)
+- **Row 5**: Equal Fees (POL)
 
 Example:
 ```csv
-Metric,8,9,10,12,16,18,19...
-Stake at Start (POL),471158.620,2784166.223,748583.980...
-Performance Delta (Milestones),136,136,136,43,133,136...
+Interval Times,2026-05-01T00:00:00.000Z,2026-05-01T00:15:00.000Z
+Total Interval Fees Collected,100.0
+Validator Pool Fees,37.0
+Stakers Pool Fees,37.0
+Stake-Weighted Pool Fees,9.25
+Equal Pool Fees,27.75
+Equal Pool Burn Fees,6.9375
+Perfect Performance,136
+Rewarded Validator Count,100
+Validator ID,8,9,10,12,16,18,19...
+Stake (POL),471158.620,2784166.223,748583.980...
+Performance Score,136,136,136,43,133,136...
 Fees Allocated (POL),0.019,0.114,0.030,0.052,0.062...
+Stake-Weighted Fees (POL),0.004,0.029,0.008,0.013,0.016...
+Equal Fees (POL),0.015,0.085,0.022,0.039,0.046...
 ```
 
 ### Summary CSV File
@@ -327,21 +341,36 @@ For each interval ending boundary:
 
 #### 5. Calculate Interval-Based Fee Allocations
 
-For each interval, fees are allocated using the PIP-65 formula with the stake distribution at the **start of that interval**:
+For each interval, fees are allocated using the PIP-85 adjusted formula with the stake distribution at the **start of that interval** and the performance delta for that interval:
 
 **For a single interval:**
 ```
-1. Calculate validator pool for interval:
-   Pool_interval = feeDelta × (1 - 0.26)  [74% after block producer commission]
+1. Remove block producer commission:
+   postCommissionPool = feeDelta x (1 - blockProducerCommission)
 
-2. For each validator, calculate performance-weighted stake:
-   WeightedStake_v = Stake_v × Performance_v
+2. Split post-commission fees between stakers and validators:
+   stakersPool = postCommissionPool x stakersFeeRate
+   validatorsPool = postCommissionPool - stakersPool
 
-3. Sum all weighted stakes:
-   TotalWeightedStake = Σ(WeightedStake_v)
+3. Split the validator pool:
+   stakeWeightedPool = validatorsPool x (1 - equalityFactor)
+   equalPool = validatorsPool - stakeWeightedPool
 
-4. Allocate fees proportionally:
-   Allocation_v = (WeightedStake_v / TotalWeightedStake) × Pool_interval
+4. For the stake-weighted leg, calculate performance-weighted stake:
+   weightedStake_v = stakeAtStart_v x performanceDelta_v
+   stakeWeightedAllocation_v = (weightedStake_v / sum(weightedStake)) x stakeWeightedPool
+
+5. For the equal-share leg, use validators with positive interval performance:
+   rewardedValidatorCount = count(validators where performanceDelta > 0)
+   perfectPerformance = max(performanceDelta)
+   equalBaseShare = equalPool / rewardedValidatorCount
+   equalAllocation_v = equalBaseShare x performanceDelta_v / perfectPerformance
+
+6. Track undistributed equal-share fees as burn:
+   equalPoolBurn = equalPool - sum(equalAllocation)
+
+7. Add the two validator legs:
+   Allocation_v = stakeWeightedAllocation_v + equalAllocation_v
 ```
 
 **Accumulate across all intervals:**
@@ -351,8 +380,9 @@ TotalFees_v = Σ(Allocation_v,i) for all intervals i
 
 This ensures that:
 - Validators receive fees **only for intervals when they had stake**
-- Fees are allocated **proportional to stake amount** at each interval
-- Performance scores **for the specific interval** weight fees at each interval
+- A portion of validator fees is allocated **proportional to stake amount and performance** at each interval
+- A portion of validator fees is allocated as an **equal share scaled by relative performance**
+- Staker-pool fees and equal-share burn are tracked separately for downstream reconciliation
 - **Time-weighted**: A validator with stake for longer receives more fees
 
 ## Technical Details
