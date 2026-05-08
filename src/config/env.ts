@@ -30,7 +30,7 @@ export function getConfig(): Config {
     blockProducerCommission: Number.parseFloat(process.env.BLOCK_PRODUCER_COMMISSION || '0.26'),
     stakersFeeRate: Number.parseFloat(process.env.STAKERS_FEE_RATE || '0.5'),
     equalityFactor: Number.parseFloat(process.env.EQUALITY_FACTOR || '0.75'),
-    outputPath: process.env.OUTPUT_PATH || './output/fee-splits.json',
+    outputPath: process.env.OUTPUT_PATH || './output/',
     maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT_REQUESTS || '3', 10),
     requestDelayMs: parseInt(process.env.REQUEST_DELAY_MS || '200', 10),
     requestTimeoutMs: process.env.REQUEST_TIMEOUT_MS ? parseInt(process.env.REQUEST_TIMEOUT_MS, 10) : undefined,

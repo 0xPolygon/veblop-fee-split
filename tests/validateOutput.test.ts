@@ -95,6 +95,81 @@ function makeTransferFile(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function weiString(wei: bigint): string {
+  const digits = wei.toString().padStart(19, '0');
+  const whole = digits.slice(0, -18);
+  const fractional = digits.slice(-18);
+  return `${whole}.${fractional}`;
+}
+
+function makeMultiIntervalRoundingReport() {
+  const intervals = Array.from({ length: 3 }, (_, index) => ({
+    intervalNumber: index,
+    startTimestamp: 100 + index,
+    endTimestamp: 101 + index,
+    feesCollected: weiString(3n),
+    postCommissionPoolFees: weiString(3n),
+    stakersPoolFees: '0.0',
+    validatorPoolFees: weiString(3n),
+    stakeWeightedValidatorPoolFees: weiString(3n),
+    equalValidatorPoolFees: '0.0',
+    equalPoolBurnFees: '0.0',
+    perfectPerformance: '1',
+    rewardedValidatorCount: 2,
+    validators: {
+      '1': {
+        stakeAtStart: '1.0',
+        performanceDelta: '1',
+        stakeWeightedFeesAllocated: weiString(1n),
+        equalFeesAllocated: '0.0',
+        feesAllocated: weiString(1n),
+      },
+      '2': {
+        stakeAtStart: '1.0',
+        performanceDelta: '1',
+        stakeWeightedFeesAllocated: weiString(1n),
+        equalFeesAllocated: '0.0',
+        feesAllocated: weiString(1n),
+      },
+    },
+  }));
+
+  return {
+    metadata: {
+      startPolygonBlock: 1,
+      endPolygonBlock: 2,
+      blockProducerCommission: 0,
+      stakersFeeRate: 0,
+      equalityFactor: 0,
+      totalIntervals: 3,
+      generatedAt: '2026-05-08T00:00:00.000Z',
+    },
+    summary: {
+      totalFeesCollected: weiString(9n),
+      totalPostCommissionPool: weiString(9n),
+      totalStakersPool: '0.0',
+      totalValidatorPool: weiString(9n),
+      totalStakeWeightedValidatorPool: weiString(9n),
+      totalEqualValidatorPool: '0.0',
+      totalEqualPoolBurn: '0.0',
+      validatorCount: 2,
+    },
+    intervals,
+    finalAllocations: {
+      '1': {
+        stakeWeightedFeesAllocated: weiString(3n),
+        equalFeesAllocated: '0.0',
+        feesAllocated: weiString(3n),
+      },
+      '2': {
+        stakeWeightedFeesAllocated: weiString(3n),
+        equalFeesAllocated: '0.0',
+        feesAllocated: weiString(3n),
+      },
+    },
+  };
+}
+
 function writeJson(dir: string, name: string, value: unknown): string {
   const filePath = path.join(dir, name);
   fs.writeFileSync(filePath, JSON.stringify(value, null, 2), 'utf-8');
@@ -146,4 +221,11 @@ test('validation fails when transfer non-validator metadata does not match detai
   } finally {
     process.exit = originalExit;
   }
+});
+
+test('validation allows stake-weighted rounding remainders accumulated across intervals', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'fee-split-validation-'));
+  const detailedPath = writeJson(dir, 'detailed.json', makeMultiIntervalRoundingReport());
+
+  withQuietConsole(() => validateOutputFiles(detailedPath));
 });

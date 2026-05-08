@@ -98,13 +98,12 @@ function formatPOL(wei: bigint): string {
 }
 
 /**
- * Compare two BigInt values with a tolerance for rounding errors
- * Returns true if difference is within 1 wei per validator
+ * Compare two BigInt values with a tolerance for rounding errors.
+ * The tolerance is expressed in wei.
  */
-function almostEqual(a: bigint, b: bigint, validatorCount: number = 1): boolean {
+function almostEqual(a: bigint, b: bigint, toleranceWei: number = 1): boolean {
   const diff = a > b ? a - b : b - a;
-  // Allow 1 wei per validator due to division rounding
-  const tolerance = BigInt(validatorCount);
+  const tolerance = BigInt(toleranceWei);
   return diff <= tolerance;
 }
 
@@ -462,12 +461,20 @@ function validateFinalAllocations(
   const expectedBurn = parsePOL(detailedReport.summary.totalEqualPoolBurn);
   const expectedValidatorTotal = parsePOL(detailedReport.summary.totalValidatorPool);
   const validatorCount = Math.max(Object.keys(finalAllocations).length, 1);
+  const finalAllocationRoundingTolerance = Math.max(
+    validatorCount,
+    detailedReport.intervals.reduce(
+      (sum, interval) => sum + Object.keys(interval.validators).length,
+      0
+    )
+  );
 
   details.push(`Final stake-weighted allocations: ${formatPOL(totalStakeWeightedAllocated)} POL`);
   details.push(`Final equal allocations: ${formatPOL(totalEqualAllocated)} POL`);
   details.push(`Final total allocations: ${formatPOL(totalAllocated)} POL`);
+  details.push(`Final allocation rounding tolerance: ${finalAllocationRoundingTolerance} wei`);
 
-  if (!almostEqual(expectedStakeWeighted, totalStakeWeightedAllocated, validatorCount)) {
+  if (!almostEqual(expectedStakeWeighted, totalStakeWeightedAllocated, finalAllocationRoundingTolerance)) {
     errors.push(`Stake-weighted total mismatch: expected ${detailedReport.summary.totalStakeWeightedValidatorPool} POL but got ${formatPOL(totalStakeWeightedAllocated)} POL`);
   }
 
@@ -475,7 +482,7 @@ function validateFinalAllocations(
     errors.push(`Equal-pool reconciliation mismatch: expected ${detailedReport.summary.totalEqualValidatorPool} POL but allocations plus burn equal ${formatPOL(totalEqualAllocated + expectedBurn)} POL`);
   }
 
-  if (!almostEqual(expectedValidatorTotal, totalAllocated + expectedBurn, validatorCount)) {
+  if (!almostEqual(expectedValidatorTotal, totalAllocated + expectedBurn, finalAllocationRoundingTolerance)) {
     errors.push(`Validator-pool reconciliation mismatch: expected ${detailedReport.summary.totalValidatorPool} POL but allocations plus burn equal ${formatPOL(totalAllocated + expectedBurn)} POL`);
   }
 
