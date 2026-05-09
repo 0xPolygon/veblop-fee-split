@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { getConfig } from '../src/config/env';
 
 const REQUIRED_ENV = {
-  ETHEREUM_RPC_URL: 'http://ethereum.local',
-  POLYGON_RPC_URL: 'http://polygon.local',
-  HEIMDALL_RPC_URL: 'http://heimdall.local',
+  ETHEREUM_RPC_URL: 'https://ethereum.local',
+  POLYGON_RPC_URL: 'https://polygon.local',
+  HEIMDALL_RPC_URL: 'https://heimdall.local',
 };
 
 function withEnv(overrides: Record<string, string>, fn: () => void): void {
