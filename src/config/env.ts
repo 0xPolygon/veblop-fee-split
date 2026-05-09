@@ -9,6 +9,33 @@ import { ETHEREUM_STAKING_CONTRACT, POLYGON_FEE_CONTRACT } from './contracts';
 // Load environment variables
 dotenv.config();
 
+function parseNumberEnv(name: string, defaultValue: number): number {
+  const rawValue = process.env[name];
+  if (rawValue === undefined || rawValue === '') {
+    return defaultValue;
+  }
+
+  const trimmedValue = rawValue.trim();
+  if (trimmedValue === '') {
+    return NaN;
+  }
+
+  return Number(trimmedValue);
+}
+
+function validateFraction(
+  name: string,
+  value: number,
+  allowOne: boolean,
+  errors: string[]
+): void {
+  const aboveUpperBound = allowOne ? value > 1 : value >= 1;
+  if (!Number.isFinite(value) || value < 0 || aboveUpperBound) {
+    const range = allowOne ? 'between 0 and 1 inclusive' : 'greater than or equal to 0 and less than 1';
+    errors.push(`${name} must be a finite number ${range}`);
+  }
+}
+
 /**
  * Get and validate environment configuration
  */
@@ -27,9 +54,9 @@ export function getConfig(): Config {
     heimdallRpcUrl: heimdallRpcUrlEnv,
     ethereumStakingContract: ETHEREUM_STAKING_CONTRACT,
     polygonFeeContract: POLYGON_FEE_CONTRACT,
-    blockProducerCommission: Number.parseFloat(process.env.BLOCK_PRODUCER_COMMISSION || '0.26'),
-    stakersFeeRate: Number.parseFloat(process.env.STAKERS_FEE_RATE || '0.5'),
-    equalityFactor: Number.parseFloat(process.env.EQUALITY_FACTOR || '0.75'),
+    blockProducerCommission: parseNumberEnv('BLOCK_PRODUCER_COMMISSION', 0.26),
+    stakersFeeRate: parseNumberEnv('STAKERS_FEE_RATE', 0.5),
+    equalityFactor: parseNumberEnv('EQUALITY_FACTOR', 0.75),
     outputPath: process.env.OUTPUT_PATH || './output/',
     maxConcurrentRequests: parseInt(process.env.MAX_CONCURRENT_REQUESTS || '3', 10),
     requestDelayMs: parseInt(process.env.REQUEST_DELAY_MS || '200', 10),
@@ -46,17 +73,9 @@ export function getConfig(): Config {
     errors.push('POLYGON_RPC_URL is required');
   }
 
-  if (config.blockProducerCommission < 0 || config.blockProducerCommission >= 1) {
-    errors.push('BLOCK_PRODUCER_COMMISSION must be between 0 and 1');
-  }
-
-  if (config.stakersFeeRate < 0 || config.stakersFeeRate > 1) {
-    errors.push('STAKERS_FEE_RATE must be between 0 and 1');
-  }
-
-  if (config.equalityFactor < 0 || config.equalityFactor > 1) {
-    errors.push('EQUALITY_FACTOR must be between 0 and 1');
-  }
+  validateFraction('BLOCK_PRODUCER_COMMISSION', config.blockProducerCommission, false, errors);
+  validateFraction('STAKERS_FEE_RATE', config.stakersFeeRate, true, errors);
+  validateFraction('EQUALITY_FACTOR', config.equalityFactor, true, errors);
 
   if (errors.length > 0) {
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
@@ -78,6 +97,10 @@ export function validateConfig(config: Config): { valid: boolean; errors: string
   if (!config.polygonRpcUrl) {
     errors.push('POLYGON_RPC_URL is required');
   }
+
+  validateFraction('BLOCK_PRODUCER_COMMISSION', config.blockProducerCommission, false, errors);
+  validateFraction('STAKERS_FEE_RATE', config.stakersFeeRate, true, errors);
+  validateFraction('EQUALITY_FACTOR', config.equalityFactor, true, errors);
 
   return {
     valid: errors.length === 0,

@@ -219,9 +219,14 @@ function exportIntervalsToCsv(
     fs.writeFileSync(filePath, csvContent, 'utf-8');
     generatedFiles.push(filePath);
 
+    const intervalAllocatedTotal = Object.values(interval.validators).reduce(
+      (sum, data) => sum + parseFloat(data.feesAllocated),
+      0
+    );
+
     console.log(`✓ Generated: ${filename}`);
     console.log(`  Time range: ${interval.startTimestampISO} → ${interval.endTimestampISO}`);
-    console.log(`  Fees allocated: ${interval.validatorPoolFees} POL`);
+    console.log(`  Fees allocated: ${intervalAllocatedTotal.toFixed(18)} POL`);
     console.log(`  Active validators: ${Object.keys(interval.validators).length}`);
   }
 
@@ -246,6 +251,7 @@ function exportIntervalsToCsv(
 
   // Sort by validator ID and add rows
   const sortedValidators = Array.from(validatorTotals.entries()).sort((a, b) => a[0] - b[0]);
+  const totalAllocated = sortedValidators.reduce((sum, [, total]) => sum + total, 0);
   for (const [validatorId, total] of sortedValidators) {
     summaryLines.push(`${validatorId},${total.toFixed(18)}`);
   }
@@ -257,7 +263,7 @@ function exportIntervalsToCsv(
 
   console.log(`✓ Generated: ${summaryFilename}`);
   console.log(`  Total validators: ${validatorTotals.size}`);
-  console.log(`  Total allocated: ${report.summary.totalValidatorPool} POL`);
+  console.log(`  Total allocated: ${totalAllocated.toFixed(18)} POL`);
 
   // Print summary
   console.log('\n=== Export Complete ===');
