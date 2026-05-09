@@ -22,13 +22,14 @@ import { StakingApiService } from './services/stakingApi.service';
  * Main application class
  */
 class FeeSplitApp {
-  async run(startBlock: number, endBlock: number, outputPath: string): Promise<void> {
+  async run(startBlock: number, endBlock: number, outputPath?: string): Promise<void> {
     logger.info('=== Polygon PoS Validator Fee Split Calculator ===');
     logger.info(`Analyzing Polygon blocks ${startBlock} to ${endBlock}`);
 
     try {
       // Load configuration
       const config = getConfig();
+      const effectiveOutputPath = outputPath ?? config.outputPath;
       logger.info('Configuration loaded successfully');
 
       // Initialize services
@@ -69,7 +70,11 @@ class FeeSplitApp {
       const heimdallBlockMapper = new HeimdallBlockMapperService(config.heimdallRpcUrl, heimdallRpc);
       const heimdallService = new HeimdallService(config.heimdallRpcUrl, heimdallRpc, heimdallBlockMapper);
 
-      const calculator = new FeeSplitCalculator(config.blockProducerCommission);
+      const calculator = new FeeSplitCalculator(
+        config.blockProducerCommission,
+        config.stakersFeeRate,
+        config.equalityFactor,
+      );
 
       // Step 0: Get Polygon block timestamps to determine Ethereum query range
       logger.info('\n--- Step 0: Getting Polygon block timestamps ---');
@@ -132,8 +137,8 @@ class FeeSplitApp {
       );
       logger.info(`Final fee balance at block ${endBlock}: ${ethers.formatEther(finalFeeBalance)} POL`);
 
-      // Step 4: Query StakeUpdate events from Ethereum within the block range
-      logger.info('\n--- Step 4: Querying StakeUpdate events from Ethereum ---');
+      // Step 4: Query validator StakeUpdate events from Ethereum within the block range
+      logger.info('\n--- Step 4: Querying validator StakeUpdate events from Ethereum ---');
       const stakeUpdates = await ethereumService.getStakeUpdateEventsByBlocks(
         startEthereumBlock+1, //initial validator stakes are queried as of startEthereumBlock
         endEthereumBlock-1 //we don't need stake updates for the end block as they'd apply for the next period, which is out of scope
@@ -212,8 +217,8 @@ class FeeSplitApp {
 
       // Step 9: Write output files
       logger.info('\n--- Step 9: Writing output files ---');
-      const detailedReportPath = writeDetailedReport(result, config.outputPath, signerMap);
-      const transferFilePath = writeTransferFile(result, config.outputPath, signerMap);
+      const detailedReportPath = writeDetailedReport(result, effectiveOutputPath, signerMap);
+      const transferFilePath = writeTransferFile(result, effectiveOutputPath, signerMap);
 
       logger.info('\n=== Processing completed successfully ===');
       logger.info(`Detailed report: ${detailedReportPath}`);
@@ -248,7 +253,7 @@ program
   .version('1.0.0')
   .requiredOption('-s, --start-block <number>', 'Polygon starting block number')
   .requiredOption('-e, --end-block <number>', 'Polygon ending block number')
-  .option('-o, --output <path>', 'Output file path', './output/fee-splits.json')
+  .option('-o, --output <dir>', 'Output directory (overrides OUTPUT_PATH)')
   .action(async (options) => {
     const startBlock = parseInt(options.startBlock, 10);
     const endBlock = parseInt(options.endBlock, 10);
