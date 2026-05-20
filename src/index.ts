@@ -102,9 +102,9 @@ class FeeSplitApp {
 
       // Step 2: Query initial stakes for all validators
       logger.info('\n--- Step 2: Querying initial stakes for all validators ---');
-      // Query stakes for validator IDs 1-200 (typical range)
+      // Query stakes for validator IDs 1-1000 (greater than the typical range)
       // Validators with 0 stake will be filtered out
-      const validatorIdRange = Array.from({ length: 200 }, (_, i) => i + 1);
+      const validatorIdRange = Array.from({ length: 1000 }, (_, i) => i + 1);
       const allStakes = await ethereumService.getValidatorStakes(
         validatorIdRange,
         startEthereumBlock
