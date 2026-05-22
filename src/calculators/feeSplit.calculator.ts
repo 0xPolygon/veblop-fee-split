@@ -142,6 +142,7 @@ export class FeeSplitCalculator {
     // Build summary
     const summary: CalculationSummary = {
       totalFeesCollected: ethers.formatEther(totalFeesCollected),
+      totalProducerCommission: ethers.formatEther(totalFeesCollected - totalPostCommissionPool),
       totalPostCommissionPool: ethers.formatEther(totalPostCommissionPool),
       totalStakersPool: ethers.formatEther(totalStakersPool),
       totalValidatorPool: ethers.formatEther(totalValidatorPool),

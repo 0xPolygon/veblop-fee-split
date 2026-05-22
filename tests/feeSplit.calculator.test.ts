@@ -59,6 +59,7 @@ test('splits validator pool into stake-weighted, equal, stakers, and burn amount
   ]);
 
   assert.equal(result.summary.totalFeesCollected, '100.0');
+  assert.equal(result.summary.totalProducerCommission, '26.0');
   assert.equal(result.summary.totalPostCommissionPool, '74.0');
   assert.equal(result.summary.totalStakersPool, '37.0');
   assert.equal(result.summary.totalValidatorPool, '37.0');
@@ -170,6 +171,7 @@ test('allocates equal pool independently for each interval', () => {
   );
 
   assert.equal(result.summary.totalValidatorPool, '200.0');
+  assert.equal(result.summary.totalProducerCommission, '0.0');
   assert.equal(result.summary.totalStakeWeightedValidatorPool, '0.0');
   assert.equal(result.summary.totalEqualValidatorPool, '200.0');
   assert.equal(result.summary.totalEqualValidatorPoolDistributed, '175.0');

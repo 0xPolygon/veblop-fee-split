@@ -27,6 +27,7 @@ interface DetailedReport {
   };
   summary: {
     totalFeesCollected: string;
+    totalProducerCommission?: string;
     totalPostCommissionPool: string;
     totalStakersPool: string;
     totalValidatorPool: string;

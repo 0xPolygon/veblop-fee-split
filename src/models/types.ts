@@ -135,6 +135,7 @@ export interface CalculationMetadata {
  */
 export interface CalculationSummary {
   totalFeesCollected: string; // POL amount as decimal string
+  totalProducerCommission: string; // POL amount as decimal string
   totalPostCommissionPool: string; // POL amount as decimal string
   totalStakersPool: string; // POL amount as decimal string
   totalValidatorPool: string; // POL amount as decimal string

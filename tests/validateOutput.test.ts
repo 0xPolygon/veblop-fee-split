@@ -18,6 +18,7 @@ function makeDetailedReport() {
     },
     summary: {
       totalFeesCollected: '100.0',
+      totalProducerCommission: '26.0',
       totalPostCommissionPool: '74.0',
       totalStakersPool: '37.0',
       totalValidatorPool: '37.0',
@@ -149,6 +150,7 @@ function makeMultiIntervalRoundingReport() {
     },
     summary: {
       totalFeesCollected: weiString(9n),
+      totalProducerCommission: '0.0',
       totalPostCommissionPool: weiString(9n),
       totalStakersPool: '0.0',
       totalValidatorPool: weiString(9n),

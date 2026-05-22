@@ -126,6 +126,7 @@ A comprehensive interval-by-interval breakdown containing:
   },
   "summary": {
     "totalFeesCollected": "903.456",
+    "totalProducerCommission": "234.899",
     "totalPostCommissionPool": "668.557",
     "totalStakersPool": "334.2785",
     "totalValidatorPool": "334.2785",
