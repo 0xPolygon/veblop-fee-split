@@ -180,7 +180,7 @@ A comprehensive interval-by-interval breakdown containing:
 
 A simple file for executing transfers containing:
 - **Metadata**: Block range, total amount, validator count, commission rate
-- **Metadata** also includes aggregate staker-pool and burn totals for reconciliation
+- **Metadata** also includes aggregate producer-commission, staker-pool, and burn totals for reconciliation
 - **Allocations**: Array of validator ID and amount pairs (sorted by validator ID)
 
 **Example structure:**
@@ -194,6 +194,7 @@ A simple file for executing transfers containing:
     "blockProducerCommission": 0.26,
     "stakersFeeRate": 0.5,
     "equalityFactor": 0.75,
+    "totalProducerCommission": "234.899",
     "totalStakersPool": "334.2785",
     "totalEqualPoolBurn": "12.345",
     "generatedAt": "2025-01-15T10:30:00.000Z"

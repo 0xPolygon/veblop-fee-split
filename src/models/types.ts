@@ -170,6 +170,7 @@ export interface TransferData {
     blockProducerCommission: number;
     stakersFeeRate: number;
     equalityFactor: number;
+    totalProducerCommission: string;
     totalStakersPool: string;
     totalEqualPoolBurn: string;
     generatedAt: string;

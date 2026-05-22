@@ -86,6 +86,7 @@ function makeTransferFile(overrides: Record<string, unknown> = {}) {
       blockProducerCommission: 0.26,
       stakersFeeRate: 0.5,
       equalityFactor: 0.75,
+      totalProducerCommission: '26.0',
       totalStakersPool: '37.0',
       totalEqualPoolBurn: '6.9375',
       generatedAt: '2026-05-08T00:00:00.000Z',

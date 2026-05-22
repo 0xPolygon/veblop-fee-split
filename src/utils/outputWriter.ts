@@ -120,6 +120,7 @@ export function writeTransferFile(
       blockProducerCommission: result.metadata.blockProducerCommission,
       stakersFeeRate: result.metadata.stakersFeeRate,
       equalityFactor: result.metadata.equalityFactor,
+      totalProducerCommission: result.summary.totalProducerCommission,
       totalStakersPool: result.summary.totalStakersPool,
       totalEqualPoolBurn: result.summary.totalEqualPoolBurn,
       generatedAt: result.metadata.generatedAt,
