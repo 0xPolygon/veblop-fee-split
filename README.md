@@ -121,6 +121,7 @@ A comprehensive interval-by-interval breakdown containing:
     "blockProducerCommission": 0.26,
     "stakersFeeRate": 0.5,
     "equalityFactor": 0.75,
+    "totalProducerCommission": "234.899",
     "totalIntervals": 5,
     "generatedAt": "2025-01-15T10:30:00.000Z"
   },

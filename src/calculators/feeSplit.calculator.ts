@@ -135,6 +135,7 @@ export class FeeSplitCalculator {
       blockProducerCommission: this.blockProducerCommission,
       stakersFeeRate: this.stakersFeeRate,
       equalityFactor: this.equalityFactor,
+      totalProducerCommission: ethers.formatEther(totalFeesCollected - totalPostCommissionPool),
       totalIntervals: intervals.length,
       generatedAt: new Date().toISOString(),
     };

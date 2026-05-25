@@ -22,6 +22,7 @@ interface DetailedReport {
     blockProducerCommission: number;
     stakersFeeRate: number;
     equalityFactor: number;
+    totalProducerCommission?: string;
     totalIntervals: number;
     generatedAt: string;
   };

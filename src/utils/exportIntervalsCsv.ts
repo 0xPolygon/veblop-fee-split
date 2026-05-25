@@ -20,6 +20,7 @@ interface DetailedReport {
     startPolygonBlock: number;
     endPolygonBlock: number;
     blockProducerCommission: number;
+    totalProducerCommission?: string;
     totalIntervals: number;
     generatedAt: string;
   };

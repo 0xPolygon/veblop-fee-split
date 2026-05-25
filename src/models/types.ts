@@ -126,6 +126,7 @@ export interface CalculationMetadata {
   blockProducerCommission: number;
   stakersFeeRate: number;
   equalityFactor: number;
+  totalProducerCommission: string; // POL amount as decimal string
   totalIntervals: number;
   generatedAt: string;
 }
