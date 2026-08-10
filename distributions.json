@@ -74,6 +74,16 @@
       "polygonBlock": 88725083,
       "amount": "4113584",
       "description": "Block Producer Commission - June 2026"
+    },
+    {
+      "polygonBlock": 90609006,
+      "amount": "5754842.48",
+      "description": "Validator Distribution - June 2026"
+    },    
+    {
+      "polygonBlock": 90679993,
+      "amount": "4419737",
+      "description": "Block Producer Commission - June 2026"
     }
   ]
 }
