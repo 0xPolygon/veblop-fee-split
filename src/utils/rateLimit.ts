@@ -3,7 +3,7 @@
  */
 
 import pLimit from 'p-limit';
-import pRetry, { AbortError } from 'p-retry';
+import pRetry from 'p-retry';
 import { RateLimiterOptions, RetryOptions } from '../models/types';
 import { logger } from './logger';
 
@@ -97,7 +97,7 @@ export class RetryHandler {
           return await fn();
         } catch (error) {
           // Log retry attempts
-          if (error instanceof AbortError) {
+          if (error instanceof pRetry.AbortError) {
             throw error;
           }
 
@@ -109,7 +109,7 @@ export class RetryHandler {
             throw error;
           } else {
             // Don't retry - throw AbortError
-            throw new AbortError(error instanceof Error ? error.message : String(error));
+            throw new pRetry.AbortError(error instanceof Error ? error.message : String(error));
           }
         }
       },
