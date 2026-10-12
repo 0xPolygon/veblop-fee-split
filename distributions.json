@@ -104,6 +104,11 @@
       "polygonBlock": 93920110,
       "amount": "2482707.054",
       "description": "Block Producer Commission - September 2026"
-    }    
+    },
+    {
+      "polygonBlock": 94707402,
+      "amount": "27334955.8457",
+      "description": "PIP-92 Distribution - September 2026"
+    }
   ]
 }
