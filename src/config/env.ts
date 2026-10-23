@@ -3,7 +3,7 @@
  */
 
 import dotenv from 'dotenv';
-import { Config } from '../models/types';
+import { Config, Pip82Config } from '../models/types';
 import { ETHEREUM_STAKING_CONTRACT, POLYGON_FEE_CONTRACT } from './contracts';
 
 // Load environment variables
@@ -76,6 +76,33 @@ export function getConfig(): Config {
   validateFraction('BLOCK_PRODUCER_COMMISSION', config.blockProducerCommission, false, errors);
   validateFraction('STAKERS_FEE_RATE', config.stakersFeeRate, true, errors);
   validateFraction('EQUALITY_FACTOR', config.equalityFactor, true, errors);
+
+  if (errors.length > 0) {
+    throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);
+  }
+
+  return config;
+}
+
+/**
+ * Configuration for the PIP-82 rebate split, which only needs Polygon and Etherscan access
+ */
+export function getPip82Config(): Pip82Config {
+  const errors: string[] = [];
+
+  const config: Pip82Config = {
+    polygonRpcUrl: process.env.POLYGON_RPC_URL || '',
+    etherscanApiKey: process.env.ETHERSCAN_API_KEY || '',
+    outputPath: process.env.OUTPUT_PATH || './output/',
+  };
+
+  if (!config.polygonRpcUrl) {
+    errors.push('POLYGON_RPC_URL is required');
+  }
+
+  if (!config.etherscanApiKey) {
+    errors.push('ETHERSCAN_API_KEY is required');
+  }
 
   if (errors.length > 0) {
     throw new Error(`Configuration validation failed:\n${errors.join('\n')}`);

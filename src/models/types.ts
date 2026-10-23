@@ -60,6 +60,15 @@ export interface Config {
 }
 
 /**
+ * PIP-82 rebate split configuration
+ */
+export interface Pip82Config {
+  polygonRpcUrl: string;
+  etherscanApiKey: string;
+  outputPath: string;
+}
+
+/**
  * Rate limiter options
  */
 export interface RateLimiterOptions {
