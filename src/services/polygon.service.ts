@@ -3,18 +3,72 @@
  */
 
 import { ethers } from 'ethers';
-import { FeeSnapshot, StakeUpdateEvent, DistributionConfig, Distribution } from '../models/types';
+import { FeeSnapshot, StakeUpdateEvent, DistributionConfig, AppliedDistribution } from '../models/types';
 import { RpcService } from '../utils/rateLimit';
 import { BlockMapperService } from './blockMapper.service';
+import { DetectedOutflow, DistributionDetector } from './distributionDetector.service';
 import { logger, logProgress } from '../utils/logger';
 import * as fs from 'fs';
 import * as path from 'path';
+
+/**
+ * Block range that still needs on-chain detection, or null if distributions.json already covers it.
+ *
+ * Fee deltas only depend on distributions after the run's start block, and distributions.json is
+ * authoritative up to its last entry, so detection covers (max(startBlock, lastManualBlock), endBlock].
+ */
+export function detectionRange(
+  manual: AppliedDistribution[],
+  startBlock: number,
+  endBlock: number
+): { fromBlock: number; toBlock: number } | null {
+  const fromBlock = Math.max(startBlock, lastManualBlock(manual)) + 1;
+  return fromBlock <= endBlock ? { fromBlock, toBlock: endBlock } : null;
+}
+
+export function lastManualBlock(manual: AppliedDistribution[]): number {
+  return manual.reduce((max, d) => Math.max(max, d.polygonBlock), 0);
+}
+
+/**
+ * Detection starts after the last json entry's block, so a second payout in that same block would be missed.
+ * When that block falls inside a run, its on-chain outflows must match its json entries one-for-one.
+ */
+export function verifyCutoffBlock(
+  manual: AppliedDistribution[],
+  cutoffBlock: number,
+  outflowsAtCutoff: DetectedOutflow[]
+): void {
+  const manualCount = manual.filter(d => d.polygonBlock === cutoffBlock).length;
+  if (outflowsAtCutoff.length !== manualCount) {
+    const found = outflowsAtCutoff
+      .map(o => `${o.transactionHash} (${ethers.formatEther(o.amount)} POL)`)
+      .join(', ');
+    throw new Error(
+      `distributions.json has ${manualCount} entr${manualCount === 1 ? 'y' : 'ies'} at its last block ${cutoffBlock}, ` +
+      `but ${outflowsAtCutoff.length} transaction(s) moved POL out of the fee Safe in that block: ${found || 'none'}. ` +
+      `Fix the entries at block ${cutoffBlock} in distributions.json so they match the chain.`
+    );
+  }
+}
+
+/**
+ * Total of distributions made at or before `blockNumber`; balances are read after the block, so they already reflect them
+ */
+export function sumDistributionsThrough(distributions: AppliedDistribution[], blockNumber: number): bigint {
+  return distributions
+    .filter(d => d.polygonBlock <= blockNumber)
+    .reduce((sum, d) => sum + d.amount, 0n);
+}
 
 export class PolygonService {
   private provider: ethers.JsonRpcProvider;
   private rpcService: RpcService;
   private blockMapper: BlockMapperService;
-  private distributions: Distribution[] = [];
+  private detector: DistributionDetector;
+  private manualDistributions: AppliedDistribution[] = [];
+  private distributions: AppliedDistribution[] = [];
+  private preparedWindow?: { address: string; startBlock: number; endBlock: number };
 
   constructor(
     rpcUrl: string,
@@ -24,11 +78,12 @@ export class PolygonService {
     this.provider = new ethers.JsonRpcProvider(rpcUrl);
     this.rpcService = rpcService;
     this.blockMapper = blockMapper;
+    this.detector = new DistributionDetector(this.provider, rpcService);
     this.loadDistributions();
   }
 
   /**
-   * Load distributions from config file
+   * Load historical distributions from config file
    */
   private loadDistributions(): void {
     try {
@@ -36,13 +91,23 @@ export class PolygonService {
       if (fs.existsSync(configPath)) {
         const configData = fs.readFileSync(configPath, 'utf-8');
         const config: DistributionConfig = JSON.parse(configData);
-        this.distributions = config.distributions;
-        logger.info(`Loaded ${this.distributions.length} distribution(s) from config`);
-        for (const dist of this.distributions) {
+        this.manualDistributions = config.distributions.map(dist => {
+          if (!Number.isInteger(dist.polygonBlock) || dist.polygonBlock <= 0) {
+            throw new Error(`Invalid polygonBlock in distributions.json: ${JSON.stringify(dist)}`);
+          }
+          return {
+            polygonBlock: dist.polygonBlock,
+            amount: ethers.parseEther(dist.amount),
+            source: 'manual' as const,
+            description: dist.description,
+          };
+        });
+        logger.info(`Loaded ${this.manualDistributions.length} distribution(s) from config`);
+        for (const dist of config.distributions) {
           logger.info(`  Block ${dist.polygonBlock}: ${dist.amount} POL${dist.description ? ` (${dist.description})` : ''}`);
         }
       } else {
-        logger.info('No distributions.json found, starting fresh');
+        logger.info('No distributions.json found; all distributions will be detected on-chain');
       }
     } catch (error) {
       logger.error('Failed to load distributions config', {
@@ -50,6 +115,60 @@ export class PolygonService {
       });
       throw error;
     }
+  }
+
+  /**
+   * Resolve every distribution affecting fee deltas in [startBlock, endBlock]: distributions.json entries,
+   * plus outflows from the fee Safe detected on-chain after the last json entry.
+   * Must be called before getBalanceAtBlock.
+   *
+   * @returns Distributions inside (startBlock, endBlock], i.e. those that changed fees for this run
+   */
+  async prepareDistributions(
+    feeContractAddress: string,
+    startBlock: number,
+    endBlock: number
+  ): Promise<AppliedDistribution[]> {
+    const range = detectionRange(this.manualDistributions, startBlock, endBlock);
+    const cutoffBlock = lastManualBlock(this.manualDistributions);
+    const checkCutoff = cutoffBlock > startBlock && cutoffBlock <= endBlock;
+    const scanFrom = checkCutoff ? cutoffBlock : range?.fromBlock;
+    const detected: AppliedDistribution[] = [];
+
+    if (scanFrom !== undefined) {
+      const outflows = await this.detector.detect(feeContractAddress, scanFrom, endBlock);
+      if (checkCutoff) {
+        verifyCutoffBlock(
+          this.manualDistributions,
+          cutoffBlock,
+          outflows.filter(o => o.polygonBlock === cutoffBlock)
+        );
+        logger.info(`On-chain outflows at the last distributions.json block ${cutoffBlock} match its entries`);
+      }
+      for (const outflow of outflows.filter(o => o.polygonBlock > cutoffBlock)) {
+        detected.push({
+          polygonBlock: outflow.polygonBlock,
+          amount: outflow.amount,
+          source: 'detected',
+          transactionHash: outflow.transactionHash,
+        });
+      }
+    } else {
+      logger.info('distributions.json covers the whole block range; skipping on-chain detection');
+    }
+
+    this.distributions = [...this.manualDistributions, ...detected].sort((a, b) => a.polygonBlock - b.polygonBlock);
+    this.preparedWindow = { address: feeContractAddress.toLowerCase(), startBlock, endBlock };
+
+    const inRange = this.distributions.filter(d => d.polygonBlock > startBlock && d.polygonBlock <= endBlock);
+    logger.info(`${inRange.length} distribution(s) fall inside blocks ${startBlock}-${endBlock}:`);
+    for (const dist of inRange) {
+      logger.info(
+        `  Block ${dist.polygonBlock}: ${ethers.formatEther(dist.amount)} POL (${dist.source}` +
+        `${dist.transactionHash ? `, tx ${dist.transactionHash}` : ''}${dist.description ? `, ${dist.description}` : ''})`
+      );
+    }
+    return inRange;
   }
 
   /**
@@ -107,22 +226,23 @@ export class PolygonService {
     address: string,
     blockNumber: number
   ): Promise<bigint> {
+    const window = this.preparedWindow;
+    if (!window || window.address !== address.toLowerCase()) {
+      throw new Error(`Distributions not prepared for ${address}; call prepareDistributions first`);
+    }
+    // Detection only covers the prepared window, so balances outside it would miss distributions
+    if (blockNumber < window.startBlock || blockNumber > window.endBlock) {
+      throw new Error(
+        `Block ${blockNumber} is outside the prepared distribution window ${window.startBlock}-${window.endBlock}`
+      );
+    }
+
     try {
       const rawBalance = await this.rpcService.call(() =>
         this.provider.getBalance(address, blockNumber)
       );
 
-      // Calculate total distributions that occurred at or before this block
-      let distributionsToAddBack = 0n;
-      for (const dist of this.distributions) {
-        if (dist.polygonBlock <= blockNumber) {
-          const amount = ethers.parseEther(dist.amount);
-          distributionsToAddBack += amount;
-          logger.debug(
-            `Adding back distribution from block ${dist.polygonBlock}: ${dist.amount} POL`
-          );
-        }
-      }
+      const distributionsToAddBack = sumDistributionsThrough(this.distributions, blockNumber);
 
       // Adjusted balance accounts for distributions
       const adjustedBalance = rawBalance + distributionsToAddBack;

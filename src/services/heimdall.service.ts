@@ -15,6 +15,7 @@ interface TendermintAbciQueryResponse {
   result: {
     response: {
       code: number;
+      log?: string;
       value?: string; // Base64 encoded
       height: string;
     };
@@ -141,16 +142,20 @@ export class HeimdallService {
         : await executeQuery();
 
       if (!response.result?.response) {
-        logger.warn(`No response data for validator ${validatorId} at height ${height}`);
-        return null;
+        throw new Error(`Malformed abci_query response for validator ${validatorId} at height ${height}`);
       }
 
       const responseData = response.result.response;
 
-      // Check if key exists (code 0 = success)
-      if (responseData.code !== 0) {
-        logger.debug(`Validator ${validatorId} not found at height ${height} (code: ${responseData.code})`);
-        return null;
+      // A missing key comes back as code 0 with an empty log and no value. Anything else is a failed
+      // query, e.g. "version does not exist" when the node has pruned state at this height.
+      if (responseData.code !== 0 || responseData.log) {
+        throw new Error(
+          `Heimdall abci_query failed for validator ${validatorId} at height ${height} ` +
+          `(code ${responseData.code}${responseData.log ? `: ${responseData.log}` : ''}). ` +
+          `If the log says the version does not exist, the Heimdall node has pruned state at this height; ` +
+          `use a node that retains state for the whole block range.`
+        );
       }
 
       const valueB64 = responseData.value;

@@ -124,7 +124,12 @@ class FeeSplitApp {
 
       // Step 3: Query initial fee balance
       logger.info('\n--- Step 3: Querying initial and final fee balances ---');
-      // const VEBLOP_FORK_BLOCK = 77414656;
+      const appliedDistributions = await polygonService.prepareDistributions(
+        config.polygonFeeContract,
+        startBlock,
+        endBlock
+      );
+
       const initialFeeBalance = await polygonService.getBalanceAtBlock(
         config.polygonFeeContract,
         startBlock
@@ -217,7 +222,7 @@ class FeeSplitApp {
 
       // Step 9: Write output files
       logger.info('\n--- Step 9: Writing output files ---');
-      const detailedReportPath = writeDetailedReport(result, effectiveOutputPath, signerMap);
+      const detailedReportPath = writeDetailedReport(result, effectiveOutputPath, signerMap, appliedDistributions);
       const transferFilePath = writeTransferFile(result, effectiveOutputPath, signerMap);
 
       logger.info('\n=== Processing completed successfully ===');
