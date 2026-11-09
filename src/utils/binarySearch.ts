@@ -21,7 +21,7 @@ export interface TimestampedBlock {
 export type BlockFetcher = (blockNumber: number) => Promise<TimestampedBlock | null>;
 
 /**
- * Fetch a block for a binary search step. Fetchers already retry transient RPC errors, so a failure
+ * Fetch a block for a binary search step. Fetchers retry transient RPC errors through RpcService, so a failure
  * here is fatal: skipping the block would silently steer the search to the wrong result.
  */
 async function fetchBlockOrThrow(fetchBlock: BlockFetcher, blockNumber: number): Promise<TimestampedBlock | null> {
