@@ -348,7 +348,7 @@ For each interval ending boundary:
 NB - for the final boundary corresponding to the end of the period, we use the fee balance at the exact end Polygon block supplied.
 
 **Distributions from the fee address.** Payouts from the fee address (validator distributions, block producer commission, PIP-92 transfers, etc.) reduce its balance, so they are added back to every balance read at or after the block they happened in. They come from two sources:
-- `distributions.json` holds the historical distributions recorded by hand, and is authoritative up to and including its last entry's block. It no longer needs to be updated.
+- `distributions.json` holds the historical distributions recorded by hand, ending with the October 2026 payouts at block 95561054. It is authoritative up to and including that block and no longer needs to be updated.
 - Any later distributions are detected on-chain. The fee address is a Safe multisig, so the tool finds every Safe execution (`ExecutionSuccess`, `ExecutionFailure` and the module variants) in the run's block range, traces each transaction with `debug_traceTransaction`, and adds back the net POL that left the Safe, including gas refunds paid to the executor.
 
 Only distributions inside the run's block range affect fee deltas, so detection only scans that range. Each run's detailed report lists the distributions it applied.
