@@ -109,6 +109,16 @@
       "polygonBlock": 94707402,
       "amount": "27334955.8457",
       "description": "PIP-92 Distribution - September 2026"
+    },
+    {
+      "polygonBlock": 95561033,
+      "amount": "2958241.731938963385023194",
+      "description": "Validator Distribution - October 2026"
+    },
+    {
+      "polygonBlock": 95561054,
+      "amount": "2217276.019966614330361643",
+      "description": "Block Producer Commission - October 2026"
     }
   ]
 }
