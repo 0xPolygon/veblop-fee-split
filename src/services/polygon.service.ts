@@ -3,7 +3,7 @@
  */
 
 import { ethers } from 'ethers';
-import { FeeSnapshot, StakeUpdateEvent, DistributionConfig, AppliedDistribution } from '../models/types';
+import { FeeSnapshot, DistributionConfig, AppliedDistribution } from '../models/types';
 import { RpcService } from '../utils/rateLimit';
 import { BlockMapperService } from './blockMapper.service';
 import { DetectedOutflow, DistributionDetector } from './distributionDetector.service';
