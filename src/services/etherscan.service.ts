@@ -56,7 +56,7 @@ export class EtherscanService {
     }
     fs.mkdirSync(path.dirname(base), { recursive: true });
 
-    let from = fs.existsSync(progressPath) ? parseInt(fs.readFileSync(progressPath, 'utf-8'), 10) : startBlock;
+    let from = readProgress(progressPath) ?? startBlock;
     this.truncateFrom(dataPath, from, from === startBlock);
 
     for (;;) {
@@ -140,6 +140,27 @@ export class EtherscanService {
     this.nextSlot = slot + 1000 / this.callsPerSecond;
     await new Promise(resolve => setTimeout(resolve, slot - now));
   }
+}
+
+/**
+ * Block to resume from after an interruption, or null when there is no checkpoint
+ */
+export function readProgress(progressPath: string): number | null {
+  // Read directly rather than checking existsSync first, so the file can't change between the check and the read
+  let text: string;
+  try {
+    text = fs.readFileSync(progressPath, 'utf-8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null;
+    }
+    throw error;
+  }
+  const block = parseInt(text, 10);
+  if (!Number.isInteger(block)) {
+    throw new Error(`Corrupt checkpoint ${progressPath}: ${JSON.stringify(text)}`);
+  }
+  return block;
 }
 
 /**
