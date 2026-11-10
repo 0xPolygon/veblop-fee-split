@@ -226,3 +226,26 @@ test('throws when an interval has a negative fee delta', () => {
     /Negative fee delta detected.*Polygon block 1000.*distributions\.json/s,
   );
 });
+
+test('rejects a decrease in cumulative performance score', () => {
+  const calculator = new FeeSplitCalculator(0.26, 0.5, 0.75);
+
+  assert.throws(
+    () =>
+      calculator.calculate(
+        [200],
+        new Map([[1, ethers.parseEther('10')]]),
+        [] as StakeUpdateEvent[],
+        0n,
+        [{ ethereumTimestamp: 200, polygonBlock: 1000, feeBalance: ethers.parseEther('100') }],
+        makePerformanceScore(100, 500, [[1, 10n]]),
+        [makePerformanceScore(200, 600, [[1, 4n]])],
+        1,
+        2,
+        100,
+        200,
+        123,
+      ),
+    /Performance score for validator 1 decreased.*10 -> 4/
+  );
+});

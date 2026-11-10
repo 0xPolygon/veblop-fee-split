@@ -3,19 +3,10 @@
  */
 
 import pLimit from 'p-limit';
-import pRetry, { AbortError } from 'p-retry';
+import pRetry from 'p-retry';
 import { RateLimiterOptions, RetryOptions } from '../models/types';
 import { logger } from './logger';
-
-/**
- * Timeout error class for network call timeouts
- */
-export class TimeoutError extends Error {
-  constructor(message: string, public readonly timeoutMs: number) {
-    super(message);
-    this.name = 'TimeoutError';
-  }
-}
+import { isRetryableError, TimeoutError } from './retryableError';
 
 /**
  * Execute a function with a timeout
@@ -97,19 +88,19 @@ export class RetryHandler {
           return await fn();
         } catch (error) {
           // Log retry attempts
-          if (error instanceof AbortError) {
+          if (error instanceof pRetry.AbortError) {
             throw error;
           }
 
           // Determine if we should retry
-          if (this.shouldRetry(error)) {
+          if (isRetryableError(error)) {
             logger.warn('Retrying operation after error', {
               error: error instanceof Error ? error.message : String(error),
             });
             throw error;
           } else {
             // Don't retry - throw AbortError
-            throw new AbortError(error instanceof Error ? error.message : String(error));
+            throw new pRetry.AbortError(error instanceof Error ? error.message : String(error));
           }
         }
       },
@@ -126,43 +117,6 @@ export class RetryHandler {
         },
       }
     );
-  }
-
-  /**
-   * Determine if an error should trigger a retry
-   */
-  private shouldRetry(error: unknown): boolean {
-    if (!(error instanceof Error)) {
-      return false;
-    }
-
-    const message = error.message.toLowerCase();
-
-    // Retry on network errors and timeout errors
-    if (
-      message.includes('timeout') ||
-      message.includes('network') ||
-      message.includes('econnrefused') ||
-      message.includes('econnreset') ||
-      message.includes('enotfound') ||
-      message.includes('rate limit') ||
-      error instanceof TimeoutError
-    ) {
-      return true;
-    }
-
-    // Check for ethers-specific errors
-    if ('code' in error) {
-      const code = (error as { code: string }).code;
-      return (
-        code === 'TIMEOUT' ||
-        code === 'NETWORK_ERROR' ||
-        code === 'SERVER_ERROR' ||
-        code === 'UNKNOWN_ERROR'
-      );
-    }
-
-    return false;
   }
 }
 

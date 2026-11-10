@@ -5,7 +5,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { ethers } from 'ethers';
-import { CalculationResult, TransferData } from '../models/types';
+import { AppliedDistribution, CalculationResult, TransferData } from '../models/types';
 import { logger } from './logger';
 
 /**
@@ -14,12 +14,14 @@ import { logger } from './logger';
  * @param result - Complete calculation result with interval details
  * @param outputDir - Directory to write the file to
  * @param signerMap - Map of validatorId -> signer address from Polygon Staking API
+ * @param distributions - Fee address distributions added back within the block range
  * @returns Path to the generated file
  */
 export function writeDetailedReport(
   result: CalculationResult,
   outputDir: string,
-  signerMap: Map<number, string>
+  signerMap: Map<number, string>,
+  distributions: AppliedDistribution[]
 ): string {
   // Ensure output directory exists
   if (!fs.existsSync(outputDir)) {
@@ -63,6 +65,13 @@ export function writeDetailedReport(
   const output = {
     metadata: result.metadata,
     summary: result.summary,
+    distributions: distributions.map(d => ({
+      polygonBlock: d.polygonBlock,
+      amount: ethers.formatEther(d.amount),
+      source: d.source,
+      transactionHash: d.transactionHash,
+      description: d.description,
+    })),
     intervals: enrichedIntervals,
     finalAllocations,
   };

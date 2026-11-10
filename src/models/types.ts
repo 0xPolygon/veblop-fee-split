@@ -207,3 +207,14 @@ export interface Distribution {
 export interface DistributionConfig {
   distributions: Distribution[];
 }
+
+/**
+ * Distribution added back to the fee balance during a run, either from distributions.json or detected on-chain
+ */
+export interface AppliedDistribution {
+  polygonBlock: number;
+  amount: bigint;
+  source: 'manual' | 'detected';
+  description?: string;
+  transactionHash?: string;
+}
