@@ -30,7 +30,8 @@ The validator side uses a PIP-85 adjusted interval formula:
 
 - Node.js 18+
 - npm or yarn
-- RPC provider accounts with **archive node access** for Polygon (required for historical balance queries)
+- RPC provider accounts with **archive node access** for Polygon (required for historical balance queries). The Polygon RPC must also support `debug_traceTransaction` with the `callTracer`, which is used to detect distributions from the fee address
+- A Heimdall RPC node that retains state for every height in the block range. Pruned nodes answer historical queries with `version does not exist`, and the tool stops with an error rather than treating the missing data as zero scores
 
 ## Installation
 
@@ -99,6 +100,7 @@ The tool generates two JSON files in the output directory (default: `./output/`)
 A comprehensive interval-by-interval breakdown containing:
 - **Metadata**: Block range, timestamps, commission rate, generation time
 - **Summary**: Total fees collected, pool totals, equal-share distributed amount, equal-share burn, and validator count
+- **Distributions**: Payouts from the fee address inside the block range that were added back to the balance, each with its block, amount, source (`manual` from `distributions.json` or `detected` on-chain) and transaction hash for detected ones
 - **Intervals**: For each staking interval:
   - Interval number and timestamps (start/end)
   - Ethereum block at interval start (used for stake queries)
@@ -345,6 +347,12 @@ For each interval ending boundary:
 
 NB - for the final boundary corresponding to the end of the period, we use the fee balance at the exact end Polygon block supplied.
 
+**Distributions from the fee address.** Payouts from the fee address (validator distributions, block producer commission, PIP-92 transfers, etc.) reduce its balance, so they are added back to every balance read at or after the block they happened in. They come from two sources:
+- `distributions.json` holds the historical distributions recorded by hand, ending with the October 2026 payouts at block 95561054. It is authoritative up to and including that block and no longer needs to be updated.
+- Any later distributions are detected on-chain. The fee address is a Safe multisig, so the tool finds every Safe execution (`ExecutionSuccess`, `ExecutionFailure` and the module variants) in the run's block range, traces each transaction with `debug_traceTransaction`, and adds back the net POL that left the Safe, including gas refunds paid to the executor.
+
+Only distributions inside the run's block range affect fee deltas, so detection only scans that range. Each run's detailed report lists the distributions it applied.
+
 This gives us the exact fees collected during each interval.
 
 #### 4. Fetch Validator Performance Scores
@@ -451,7 +459,7 @@ Configuration is done via environment variables in `.env`. Contract addresses ar
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `ETHEREUM_RPC_URL` | Ethereum mainnet RPC URL | Required |
-| `POLYGON_RPC_URL` | Polygon PoS RPC URL (archive) | Required |
+| `POLYGON_RPC_URL` | Polygon PoS RPC URL (archive, with `debug_traceTransaction`) | Required |
 | `HEIMDALL_RPC_URL` | Heimdall RPC URL | Required |
 | `BLOCK_PRODUCER_COMMISSION` | Producer commission rate | `0.26` (26%) |
 | `STAKERS_FEE_RATE` | Post-commission share reserved for stakers/delegators | `0.5` |

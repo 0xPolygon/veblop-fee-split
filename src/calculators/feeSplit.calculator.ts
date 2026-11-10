@@ -292,7 +292,8 @@ export class FeeSplitCalculator {
           `Previous adjusted fee balance was ${ethers.formatEther(previousFee)} POL, ` +
           `current adjusted fee balance is ${ethers.formatEther(feeSnapshot.feeBalance)} POL, ` +
           `delta is ${ethers.formatEther(feeDelta)} POL. ` +
-          `Fees should never be negative; check distributions.json for an incorrectly recorded distribution block.`
+          `Fees should never be negative; check the run's applied distributions (distributions.json entries ` +
+          `and on-chain detected outflows) for a missing or misrecorded distribution.`
         );
       }
       currentFee = feeSnapshot.feeBalance;
@@ -313,6 +314,16 @@ export class FeeSplitCalculator {
         const currentScore = performanceScore.get(validatorId) ?? 0n;
         const delta = currentScore - previousScore;
         logger.debug(`Performance score delta for validator ${validatorId}: ${currentScore} - ${previousScore} = ${delta}`);
+        // Heimdall scores are cumulative; a drop means they were reset or the data is wrong,
+        // and the interval's true performance can't be recovered from the two snapshots.
+        if (delta < 0n) {
+          throw new Error(
+            `Performance score for validator ${validatorId} decreased in interval ${i} ending at ${timestamp} ` +
+            `(${new Date(timestamp * 1000).toISOString()}, Heimdall block ${performanceMap.get(timestamp)!.heimdallBlock}): ` +
+            `${previousScore} -> ${currentScore}. Heimdall performance scores should only increase; ` +
+            `check whether they were reset within this range.`
+          );
+        }
         // Only record validators that will receive some rewards for this interval
         if (delta > 0n) {
           performanceScoreDeltas.set(validatorId, delta);
