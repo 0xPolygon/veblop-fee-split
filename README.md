@@ -304,6 +304,46 @@ Validator ID,Total Fees Allocated (POL)
 
 **Note:** All validator IDs are consistent across all interval CSV files, with missing validators shown as `0` for that interval.
 
+## PIP-82 Rebate Split
+
+A separate CLI, `npm run pip82`, splits a block range's base fees under [PIP-82](https://github.com/0xPolygon/Polygon-Improvement-Proposals/blob/main/PIPs/PIP-82.md). Since block 83,756,500, bor credits every transaction's `gasUsed × baseFee` to the fee recipient `0x3ef57def668054dd750bd260526105c4eeef104f`. For a block range the tool reports:
+
+- **Rebated**: base fees paid by each key in `pip82-relayers.csv` (failed transactions included), per key and per group.
+- **Network**: `gasUsed × baseFee` summed over every block header in the range.
+- **Not rebated**: network minus rebated, for exactly that block range.
+- **Burn**: the amount to send to the burn collector `0x7A8ed27F4C30512326878652d20fC85727401854`.
+
+Burn equals not rebated, except for the range starting at block 88,560,001. The payout at block 89,413,444 settled blocks 85,530,000–88,560,000, but its burn was the fee recipient's balance a few hours after that range ended, so it also paid out 31,063.098 POL of base fees from blocks 88,560,001 onwards. The range starting at 88,560,001 burns that much less, and the tool re-derives the amount on-chain before applying it. Later ranges settle exactly their own blocks: start each one at the block after the last range settled.
+
+```bash
+npm run build
+npm run pip82 -- --start-block 88560001 --end-block 95879700
+```
+
+It needs `POLYGON_RPC_URL` and `ETHERSCAN_API_KEY` (not the Ethereum or Heimdall settings). The Polygon endpoint must be an archive node that supports `debug_getRawHeader`, which is used to read every block header in the range cheaply.
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `-s, --start-block`, `-e, --end-block` | Block range (inclusive) | Required |
+| `-r, --relayers <file>` | CSV of rebated keys, columns `group,address` | `pip82-relayers.csv` |
+| `-o, --output <dir>` | Output directory | `OUTPUT_PATH` |
+| `--cache <dir>` | Header and transaction-list cache; an interrupted run resumes from it | `./cache/pip82` |
+| `--rpc <url>` | Overrides `POLYGON_RPC_URL` | |
+| `--rpc-batch`, `--rpc-concurrency` | JSON-RPC batch size and concurrent batches for headers | `100`, `8` |
+| `--etherscan-rps` | Etherscan calls per second | `4` |
+| `--verify-txs`, `--verify-blocks` | Transactions per key and blocks spot-checked on-chain | `3`, `200` |
+| `--headers-only` | Only fetch and cache headers | |
+
+It writes `pip82-rebates-{startBlock}-{endBlock}-{timestamp}.csv`, with per-key fees and the split lines, and a `.json` summary with the rebate per group and the burn. Before finishing it checks:
+
+- Each key's transaction count matches its nonce range.
+- Sampled transactions match their receipts.
+- In sampled blocks, the fee recipient's balance rose by exactly `gasUsed × baseFee`.
+
+It also logs the fee recipient's balance at the end block, less this range's payout. That should be about zero: earlier payouts' Safe gas refunds make it slightly negative. A large positive value means an earlier range is still unpaid.
+
+Over about 7.3M blocks and 20M relayer transactions, a run takes about an hour, mostly Etherscan paging. Headers arrive at about 9k blocks/s with `--rpc-batch 500 --rpc-concurrency 12` on a provider that allows it. The cache takes about 2 GB.
+
 ## How It Works
 
 ### Overview: Interval-Based Allocation
@@ -469,6 +509,7 @@ Configuration is done via environment variables in `.env`. Contract addresses ar
 | `REQUEST_DELAY_MS` | Delay between requests | `200` |
 | `MAX_RETRIES` | Max retry attempts | `3` |
 | `REQUEST_TIMEOUT_MS` | RPC Time Out | none |
+| `ETHERSCAN_API_KEY` | Etherscan API key (PIP-82 rebate split only) | Required for `pip82` |
 | `LOG_LEVEL` | Logging level | `info` |
 
 ### Hardcoded Contract Addresses
