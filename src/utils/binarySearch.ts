@@ -21,6 +21,20 @@ export interface TimestampedBlock {
 export type BlockFetcher = (blockNumber: number) => Promise<TimestampedBlock | null>;
 
 /**
+ * Fetch a block for a binary search step. Fetchers retry transient RPC errors through RpcService, so a failure
+ * here is fatal: skipping the block would silently steer the search to the wrong result.
+ */
+async function fetchBlockOrThrow(fetchBlock: BlockFetcher, blockNumber: number): Promise<TimestampedBlock | null> {
+  try {
+    return await fetchBlock(blockNumber);
+  } catch (error) {
+    throw new Error(
+      `Binary search failed to fetch block ${blockNumber}: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+/**
  * Binary search to find the largest block with timestamp less than or equal to target
  * Use this when you need the latest block at or before a specific timestamp
  * (e.g., querying state that was valid at a specific point in time)
@@ -40,30 +54,12 @@ export async function binarySearchBlockByTimestampLte(
   let left = minBlock;
   let right = maxBlock;
   let result = left;
-  let retries = 0;
 
   logger.debug(`Binary search (<=) range: ${left} to ${right} for timestamp ${targetTimestamp}`);
 
   while (left <= right) {
     const mid = Math.floor((left + right) / 2);
-
-    let block: TimestampedBlock | null;
-    try {
-      block = await fetchBlock(mid);
-      retries = 0;
-    } catch (error) {
-      logger.warn(`Failed to fetch block ${mid} (retries: ${retries})`, {
-        error: error instanceof Error ? error.message : String(error)
-      });
-      // If we've retried 10 times, give up and search earlier blocks
-      retries++;
-      if (retries > 10) {
-        logger.warn(`Failed to fetch block ${mid} after 10 retries, searching earlier blocks`);
-        right = mid - 1;
-        retries = 0;
-      }
-      continue;
-    }
+    const block = await fetchBlockOrThrow(fetchBlock, mid);
 
     if (!block) {
       logger.debug(`Block ${mid} not found, searching earlier blocks`);
@@ -109,27 +105,12 @@ export async function binarySearchBlockByTimestampGte(
   let left = minBlock;
   let right = maxBlock;
   let result = right;
-  let retries = 0;
 
   logger.debug(`Binary search (>=) range: ${left} to ${right} for timestamp ${targetTimestamp}`);
 
   while (left <= right) {
     const mid = Math.floor((left + right) / 2);
-
-    let block: TimestampedBlock | null;
-    try {
-      block = await fetchBlock(mid);
-      retries = 0;
-    } catch (error) {
-      // If we've retried 10 times, give up and search earlier blocks
-      retries++;
-      if (retries > 10) {
-        logger.warn(`Failed to fetch block ${mid} after 10 retries, searching earlier blocks`);
-        right = mid - 1;
-        retries = 0;
-      }
-      continue;
-    }
+    const block = await fetchBlockOrThrow(fetchBlock, mid);
 
     if (!block) {
       logger.debug(`Block ${mid} not found, searching earlier blocks`);
