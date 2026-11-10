@@ -78,12 +78,47 @@
     {
       "polygonBlock": 90609006,
       "amount": "5754842.48",
-      "description": "Validator Distribution - June 2026"
+      "description": "Validator Distribution - July 2026"
     },    
     {
       "polygonBlock": 90679993,
       "amount": "4419737",
-      "description": "Block Producer Commission - June 2026"
+      "description": "Block Producer Commission - July 2026"
+    },
+    {
+      "polygonBlock": 91942893,
+      "amount": "5000847.75",
+      "description": "Validator Distribution - August 2026"
+    },    
+    {
+      "polygonBlock": 91990682,
+      "amount": "3808779.39",
+      "description": "Block Producer Commission - August 2026"
+    },
+    {
+      "polygonBlock": 93920098,
+      "amount": "3313472.349",
+      "description": "Validator Distribution - September 2026"
+    },
+    {
+      "polygonBlock": 93920110,
+      "amount": "2482707.054",
+      "description": "Block Producer Commission - September 2026"
+    },
+    {
+      "polygonBlock": 94707402,
+      "amount": "27334955.8457",
+      "description": "PIP-92 Distribution - September 2026"
+    },
+    {
+      "polygonBlock": 95561033,
+      "amount": "2958241.731938963385023194",
+      "description": "Validator Distribution - October 2026"
+    },
+    {
+      "polygonBlock": 95561054,
+      "amount": "2217276.019966614330361643",
+      "description": "Block Producer Commission - October 2026"
     }
   ]
 }
