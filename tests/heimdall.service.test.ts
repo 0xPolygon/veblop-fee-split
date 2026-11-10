@@ -16,7 +16,7 @@ function serviceReturning(response: { code: number; log?: string; value?: string
     data: { jsonrpc: '2.0', id: 1, result: { response: { height: '100', ...response } } },
   })) as unknown as typeof axios.post;
 
-  // Without an RpcService the query runs directly; rateLimit.ts pulls in ESM-only p-limit, which tsx can't load
+  // Without an RpcService the query runs directly, so a failed query isn't retried
   return new HeimdallService('http://heimdall.invalid', undefined as unknown as RpcService, {} as HeimdallBlockMapperService);
 }
 

@@ -1,6 +1,5 @@
 /**
- * Decides which RPC errors are transient. Kept apart from rateLimit.ts so tests can load it:
- * rateLimit.ts imports the ESM-only p-limit, which the test runner can't resolve.
+ * Decides which RPC errors are transient, so RpcService retries them.
  */
 
 import axios from 'axios';
